@@ -1,0 +1,6 @@
+{
+  "name": "GameBoost",
+  "description": "Gaming optimization, telemetry monitoring, floating overlay, and Shizuku integration for Android devices.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

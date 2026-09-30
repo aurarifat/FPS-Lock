@@ -1,0 +1,96 @@
+name: Build and Release Debug APK
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & Release APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Gradle 9.3.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+
+      - name: Build Debug APK
+        run: |
+          if [ -f "./gradlew" ]; then
+            chmod +x gradlew
+            ./gradlew assembleDebug --stacktrace
+          else
+            gradle assembleDebug --stacktrace
+          fi
+
+      - name: Locate Debug APK
+        id: find_apk
+        run: |
+          APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            echo "Error: Debug APK not found in app/build/outputs/apk/debug"
+            exit 1
+          fi
+          echo "Found APK at: $APK_PATH"
+          echo "apk_path=$APK_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Debug APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gameboost-debug-apk
+          path: ${{ steps.find_apk.outputs.apk_path }}
+          retention-days: 30
+
+      - name: Prepare Source Code ZIP
+        run: |
+          git archive --format=zip --output=source-code.zip HEAD || zip -r source-code.zip . -x ".git/*" ".gradle/*" "build/*" "app/build/*"
+
+      - name: Determine Release Tag and Name
+        id: release_info
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            TAG_NAME="${{ github.ref_name }}"
+            RELEASE_NAME="Release $TAG_NAME"
+          else
+            DATE_TAG="v$(date +'%Y.%m.%d-%H%M%S')"
+            TAG_NAME="$DATE_TAG"
+            RELEASE_NAME="Release $DATE_TAG"
+          fi
+          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
+          echo "release_name=$RELEASE_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: success()
+        with:
+          tag_name: ${{ steps.release_info.outputs.tag_name }}
+          name: ${{ steps.release_info.outputs.release_name }}
+          body: |
+            Automated build for GameBoost.
+
+            ### Included Assets:
+            - **Debug APK**: Pre-built Android debug APK compiled with Gradle 9.3.1 and Java 17.
+            - **Source Code**: Project source code ZIP archive.
+          files: |
+            ${{ steps.find_apk.outputs.apk_path }}
+            source-code.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
