@@ -33,7 +33,6 @@ import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
-import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -52,6 +51,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -63,16 +63,27 @@ import com.example.ui.theme.BorderDark
 import com.example.ui.theme.CyberCyan
 import com.example.ui.theme.DarkSurface
 import com.example.ui.theme.DarkSurfaceVariant
+import com.example.ui.theme.LightBg
+import com.example.ui.theme.LightBorder
+import com.example.ui.theme.LightCyanSecondary
+import com.example.ui.theme.LightGreenPrimary
+import com.example.ui.theme.LightSurface
+import com.example.ui.theme.LightSurfaceVariant
+import com.example.ui.theme.LightTextMuted
+import com.example.ui.theme.LightTextPrimary
+import com.example.ui.theme.LightTextSecondary
 import com.example.ui.theme.NeonGreen
 import com.example.ui.theme.ObsidianBg
 import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
 import com.example.ui.theme.WarningAmber
+import com.example.util.HapticHelper
 
 /**
  * Jetpack Compose UI for the Floating Window Service displaying a real-time
- * frame rate counter on top of other applications.
+ * frame rate counter on top of other applications with dynamic Light/Dark theme support
+ * and sensory haptic feedback.
  */
 @Composable
 fun FloatingOverlayContent(
@@ -81,6 +92,7 @@ fun FloatingOverlayContent(
     stability: FpsMonitor.StabilityReport,
     telemetry: TelemetryData,
     isExpanded: Boolean,
+    isDarkMode: Boolean = true,
     opacity: Float,
     lagKillMessage: String?,
     onToggleExpanded: () -> Unit,
@@ -89,6 +101,7 @@ fun FloatingOverlayContent(
     onChangeOpacity: (Float) -> Unit,
     onDragDelta: (dx: Float, dy: Float) -> Unit
 ) {
+    val context = LocalContext.current
     val infiniteTransition = rememberInfiniteTransition(label = "fpsPulse")
     val pulseAlpha by infiniteTransition.animateFloat(
         initialValue = 0.4f,
@@ -100,9 +113,9 @@ fun FloatingOverlayContent(
         label = "pulseAlpha"
     )
 
-    // Dynamic FPS color grading based on performance
+    // Dynamic FPS color grading based on performance and theme
     val fpsColor = when {
-        fps >= 58 -> NeonGreen
+        fps >= 58 -> if (isDarkMode) NeonGreen else LightGreenPrimary
         fps >= 45 -> WarningAmber
         else -> AlertRed
     }
@@ -117,11 +130,20 @@ fun FloatingOverlayContent(
                 fps = fps,
                 fpsColor = fpsColor,
                 displayHz = telemetry.displayRefreshRate.toInt(),
+                isDarkMode = isDarkMode,
                 opacity = opacity,
                 pulseAlpha = pulseAlpha,
-                onToggleExpanded = onToggleExpanded,
-                onDragDelta = onDragDelta,
-                onClose = onClose
+                onToggleExpanded = {
+                    HapticHelper.performHaptic(context, HapticHelper.HapticType.MEDIUM)
+                    onToggleExpanded()
+                },
+                onDragDelta = { dx, dy ->
+                    onDragDelta(dx, dy)
+                },
+                onClose = {
+                    HapticHelper.performHaptic(context, HapticHelper.HapticType.LIGHT)
+                    onClose()
+                }
             )
         } else {
             // EXPANDED GAMING TELEMETRY HUD
@@ -131,13 +153,26 @@ fun FloatingOverlayContent(
                 fpsHistory = fpsHistory,
                 stability = stability,
                 telemetry = telemetry,
+                isDarkMode = isDarkMode,
                 opacity = opacity,
                 pulseAlpha = pulseAlpha,
                 lagKillMessage = lagKillMessage,
-                onToggleExpanded = onToggleExpanded,
-                onClose = onClose,
-                onForceKillLag = onForceKillLag,
-                onChangeOpacity = onChangeOpacity,
+                onToggleExpanded = {
+                    HapticHelper.performHaptic(context, HapticHelper.HapticType.MEDIUM)
+                    onToggleExpanded()
+                },
+                onClose = {
+                    HapticHelper.performHaptic(context, HapticHelper.HapticType.MEDIUM)
+                    onClose()
+                },
+                onForceKillLag = {
+                    HapticHelper.performHaptic(context, HapticHelper.HapticType.SUCCESS)
+                    onForceKillLag()
+                },
+                onChangeOpacity = { op ->
+                    HapticHelper.performHaptic(context, HapticHelper.HapticType.LIGHT)
+                    onChangeOpacity(op)
+                },
                 onDragDelta = onDragDelta
             )
         }
@@ -149,6 +184,7 @@ private fun CompactFpsBubble(
     fps: Int,
     fpsColor: Color,
     displayHz: Int,
+    isDarkMode: Boolean,
     opacity: Float,
     pulseAlpha: Float,
     onToggleExpanded: () -> Unit,
@@ -157,11 +193,18 @@ private fun CompactFpsBubble(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
 
+    val bgColor = if (isDarkMode) ObsidianBg else LightSurface
+    val borderColor = if (isDarkMode) fpsColor.copy(alpha = 0.85f) else fpsColor.copy(alpha = 0.95f)
+    val textColor = if (isDarkMode) TextPrimary else LightTextPrimary
+    val hzBg = if (isDarkMode) DarkSurfaceVariant else LightSurfaceVariant
+    val hzTextColor = if (isDarkMode) CyberCyan else LightCyanSecondary
+    val iconTint = if (isDarkMode) TextSecondary else LightTextSecondary
+
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(22.dp))
-            .background(ObsidianBg.copy(alpha = opacity.coerceIn(0.4f, 1.0f)))
-            .border(1.5.dp, fpsColor.copy(alpha = 0.85f), RoundedCornerShape(22.dp))
+            .background(bgColor.copy(alpha = opacity.coerceIn(0.4f, 1.0f)))
+            .border(1.5.dp, borderColor, RoundedCornerShape(22.dp))
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
@@ -188,7 +231,7 @@ private fun CompactFpsBubble(
                 Icon(
                     imageVector = Icons.Default.DragIndicator,
                     contentDescription = "Drag overlay",
-                    tint = TextSecondary,
+                    tint = iconTint,
                     modifier = Modifier.size(16.dp)
                 )
             }
@@ -212,7 +255,7 @@ private fun CompactFpsBubble(
 
             Text(
                 text = "FPS",
-                color = TextPrimary,
+                color = textColor,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -221,12 +264,12 @@ private fun CompactFpsBubble(
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(6.dp))
-                    .background(DarkSurfaceVariant)
+                    .background(hzBg)
                     .padding(horizontal = 6.dp, vertical = 2.dp)
             ) {
                 Text(
                     text = "${displayHz}Hz",
-                    color = CyberCyan,
+                    color = hzTextColor,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -236,7 +279,7 @@ private fun CompactFpsBubble(
             Icon(
                 imageVector = Icons.Default.Fullscreen,
                 contentDescription = "Expand HUD",
-                tint = TextSecondary,
+                tint = iconTint,
                 modifier = Modifier.size(16.dp)
             )
         }
@@ -250,6 +293,7 @@ private fun ExpandedFpsHud(
     fpsHistory: List<Int>,
     stability: FpsMonitor.StabilityReport,
     telemetry: TelemetryData,
+    isDarkMode: Boolean,
     opacity: Float,
     pulseAlpha: Float,
     lagKillMessage: String?,
@@ -263,12 +307,22 @@ private fun ExpandedFpsHud(
     val totalMb = telemetry.ramTotalBytes / (1024 * 1024)
     val ramFraction = if (totalMb > 0) usedMb.toFloat() / totalMb.toFloat() else 0f
 
+    val hudBg = if (isDarkMode) DarkSurface else LightSurface
+    val hudBorder = if (isDarkMode) BorderDark else LightBorder
+    val headerBg = if (isDarkMode) DarkSurfaceVariant else LightSurfaceVariant
+    val headerText = if (isDarkMode) TextPrimary else LightTextPrimary
+    val iconTint = if (isDarkMode) TextSecondary else LightTextSecondary
+    val subText = if (isDarkMode) TextSecondary else LightTextSecondary
+    val mutedText = if (isDarkMode) TextMuted else LightTextMuted
+    val primaryText = if (isDarkMode) TextPrimary else LightTextPrimary
+    val hzColor = if (isDarkMode) CyberCyan else LightCyanSecondary
+
     Box(
         modifier = Modifier
             .width(280.dp)
             .clip(RoundedCornerShape(16.dp))
-            .background(DarkSurface.copy(alpha = opacity.coerceIn(0.5f, 1.0f)))
-            .border(1.5.dp, BorderDark, RoundedCornerShape(16.dp))
+            .background(hudBg.copy(alpha = opacity.coerceIn(0.5f, 1.0f)))
+            .border(1.5.dp, hudBorder, RoundedCornerShape(16.dp))
             .padding(12.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -277,7 +331,7 @@ private fun ExpandedFpsHud(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(8.dp))
-                    .background(DarkSurfaceVariant)
+                    .background(headerBg)
                     .pointerInput(Unit) {
                         detectDragGestures { change, dragAmount ->
                             change.consume()
@@ -295,7 +349,7 @@ private fun ExpandedFpsHud(
                     Icon(
                         imageVector = Icons.Default.DragIndicator,
                         contentDescription = "Drag handle",
-                        tint = TextSecondary,
+                        tint = iconTint,
                         modifier = Modifier.size(16.dp)
                     )
                     Box(
@@ -306,7 +360,7 @@ private fun ExpandedFpsHud(
                     )
                     Text(
                         text = "GAMEBOOST HUD",
-                        color = TextPrimary,
+                        color = headerText,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 1.sp
@@ -321,7 +375,7 @@ private fun ExpandedFpsHud(
                         Icon(
                             imageVector = Icons.Default.FullscreenExit,
                             contentDescription = "Minimize HUD",
-                            tint = TextSecondary,
+                            tint = iconTint,
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -359,13 +413,13 @@ private fun ExpandedFpsHud(
                     Column(modifier = Modifier.padding(bottom = 6.dp)) {
                         Text(
                             text = "FPS",
-                            color = TextPrimary,
+                            color = primaryText,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.ExtraBold
                         )
                         Text(
                             text = "${telemetry.displayRefreshRate.toInt()}Hz Display",
-                            color = CyberCyan,
+                            color = hzColor,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Medium
                         )
@@ -379,12 +433,12 @@ private fun ExpandedFpsHud(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(4.dp))
-                            .background(if (stability.isStable) NeonGreen.copy(alpha = 0.15f) else AlertRed.copy(alpha = 0.2f))
+                            .background(if (stability.isStable) fpsColor.copy(alpha = 0.15f) else AlertRed.copy(alpha = 0.2f))
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Text(
                             text = if (stability.isStable) "STABLE" else "DROP: ${stability.droppedFrames}",
-                            color = if (stability.isStable) NeonGreen else AlertRed,
+                            color = if (stability.isStable) fpsColor else AlertRed,
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -392,7 +446,7 @@ private fun ExpandedFpsHud(
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = stability.message,
-                        color = TextSecondary,
+                        color = subText,
                         fontSize = 9.sp,
                         maxLines = 1
                     )
@@ -402,13 +456,14 @@ private fun ExpandedFpsHud(
             // REAL-TIME FRAME RATE TRAJECTORY GRAPH
             Text(
                 text = "Real-Time Frame Cadence (Last 20s)",
-                color = TextMuted,
+                color = mutedText,
                 fontSize = 10.sp
             )
             RealTimeFpsGraph(
                 history = fpsHistory,
                 fpsColor = fpsColor,
-                targetHz = telemetry.displayRefreshRate
+                targetHz = telemetry.displayRefreshRate,
+                isDarkMode = isDarkMode
             )
 
             // HARDWARE TELEMETRY STRIP
@@ -416,21 +471,21 @@ private fun ExpandedFpsHud(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(8.dp))
-                    .background(DarkSurfaceVariant)
+                    .background(headerBg)
                     .padding(8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Column {
-                    Text(text = "RAM", color = TextMuted, fontSize = 9.sp)
+                    Text(text = "RAM", color = mutedText, fontSize = 9.sp)
                     Text(
                         text = "${usedMb}MB (${(ramFraction * 100).toInt()}%)",
-                        color = TextPrimary,
+                        color = primaryText,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
                 Column {
-                    Text(text = "THERMAL", color = TextMuted, fontSize = 9.sp)
+                    Text(text = "THERMAL", color = mutedText, fontSize = 9.sp)
                     Text(
                         text = String.format("%.1f°C", telemetry.batteryTemperatureC),
                         color = if (telemetry.batteryTemperatureC > 42.0) AlertRed else WarningAmber,
@@ -439,10 +494,10 @@ private fun ExpandedFpsHud(
                     )
                 }
                 Column {
-                    Text(text = "BATTERY", color = TextMuted, fontSize = 9.sp)
+                    Text(text = "BATTERY", color = mutedText, fontSize = 9.sp)
                     Text(
                         text = "${telemetry.batteryPercent}%${if (telemetry.isCharging) " ⚡" else ""}",
-                        color = NeonGreen,
+                        color = if (isDarkMode) NeonGreen else LightGreenPrimary,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -456,8 +511,8 @@ private fun ExpandedFpsHud(
                     .fillMaxWidth()
                     .height(4.dp)
                     .clip(RoundedCornerShape(2.dp)),
-                color = if (ramFraction > 0.85f) AlertRed else CyberCyan,
-                trackColor = BorderDark
+                color = if (ramFraction > 0.85f) AlertRed else hzColor,
+                trackColor = hudBorder
             )
 
             // QUICK LAG PURGE ACTION BUTTON
@@ -477,12 +532,12 @@ private fun ExpandedFpsHud(
                     Icon(
                         imageVector = Icons.Default.FlashOn,
                         contentDescription = "Force kill lag",
-                        tint = ObsidianBg,
+                        tint = Color.White,
                         modifier = Modifier.size(16.dp)
                     )
                     Text(
                         text = "⚡ FORCE KILL LAG",
-                        color = ObsidianBg,
+                        color = Color.White,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Black
                     )
@@ -500,13 +555,13 @@ private fun ExpandedFpsHud(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(6.dp))
-                            .background(NeonGreen.copy(alpha = 0.2f))
+                            .background(fpsColor.copy(alpha = 0.2f))
                             .padding(6.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = msg,
-                            color = NeonGreen,
+                            color = fpsColor,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -522,22 +577,24 @@ private fun ExpandedFpsHud(
             ) {
                 Text(
                     text = "HUD Opacity",
-                    color = TextMuted,
+                    color = mutedText,
                     fontSize = 10.sp
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     listOf(0.50f, 0.75f, 1.0f).forEach { op ->
                         val isSelected = kotlin.math.abs(opacity - op) < 0.05f
+                        val chipBg = if (isSelected) hzColor else headerBg
+                        val chipText = if (isSelected) (if (isDarkMode) ObsidianBg else Color.White) else subText
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(4.dp))
-                                .background(if (isSelected) CyberCyan else DarkSurfaceVariant)
+                                .background(chipBg)
                                 .clickable { onChangeOpacity(op) }
                                 .padding(horizontal = 6.dp, vertical = 2.dp)
                         ) {
                             Text(
                                 text = "${(op * 100).toInt()}%",
-                                color = if (isSelected) ObsidianBg else TextSecondary,
+                                color = chipText,
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold
                             )
@@ -556,14 +613,18 @@ private fun ExpandedFpsHud(
 private fun RealTimeFpsGraph(
     history: List<Int>,
     fpsColor: Color,
-    targetHz: Float
+    targetHz: Float,
+    isDarkMode: Boolean
 ) {
+    val graphBg = if (isDarkMode) DarkSurfaceVariant else LightSurfaceVariant
+    val gridColor = if (isDarkMode) BorderDark else LightBorder
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(48.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(DarkSurfaceVariant)
+            .background(graphBg)
             .padding(4.dp)
     ) {
         Canvas(modifier = Modifier.fillMaxWidth().height(40.dp)) {
@@ -579,7 +640,7 @@ private fun RealTimeFpsGraph(
             val refY = height - ((refFps - minScale) / (maxScale - minScale) * height).coerceIn(0f, height)
 
             drawLine(
-                color = BorderDark,
+                color = gridColor,
                 start = Offset(0f, refY),
                 end = Offset(width, refY),
                 strokeWidth = 1.dp.toPx(),

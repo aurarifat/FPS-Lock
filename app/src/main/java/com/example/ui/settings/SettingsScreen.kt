@@ -22,13 +22,20 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Dangerous
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -75,6 +82,8 @@ fun SettingsScreen(viewModel: MainViewModel) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val deviceInfo by viewModel.deviceInfo.collectAsState()
     val permissionsState by viewModel.permissionsState.collectAsState()
+    val isDarkMode by viewModel.isDarkMode.collectAsState()
+    val isHapticEnabled by viewModel.isHapticEnabled.collectAsState()
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -101,7 +110,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(ObsidianBg)
+            .background(MaterialTheme.colorScheme.background)
             .testTag("settings_screen"),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -110,15 +119,86 @@ fun SettingsScreen(viewModel: MainViewModel) {
             Column {
                 Text(
                     text = "App Settings & Hardware Profile",
-                    color = TextPrimary,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontSize = 22.sp,
                     fontWeight = FontWeight.ExtraBold
                 )
                 Text(
-                    text = "Permission checklist, hardware integrity & defaults restoration",
-                    color = TextMuted,
+                    text = "Appearance, tactile haptics & permission checklist",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 12.sp
                 )
+            }
+        }
+
+        // APPEARANCE & THEME CARD
+        item {
+            GamingCard(
+                title = "Appearance & Interface",
+                icon = if (isDarkMode) Icons.Default.DarkMode else Icons.Default.LightMode,
+                accentColor = if (isDarkMode) CyberCyan else WarningAmber
+            ) {
+                // Dark / Light Theme Toggle
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = if (isDarkMode) "Dark Stealth Theme" else "Light Solar Theme",
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Synchronizes main app and floating FPS HUD overlay theme",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 11.sp
+                        )
+                    }
+                    Switch(
+                        checked = isDarkMode,
+                        onCheckedChange = { viewModel.toggleDarkMode(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = ObsidianBg,
+                            checkedTrackColor = NeonGreen
+                        ),
+                        modifier = Modifier.testTag("settings_theme_switch")
+                    )
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = MaterialTheme.colorScheme.outlineVariant)
+
+                // Haptic Feedback Toggle
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Tactile Haptic Feedback",
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Sensory vibration on button taps, lag purges, and HUD dragging",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 11.sp
+                        )
+                    }
+                    Switch(
+                        checked = isHapticEnabled,
+                        onCheckedChange = { viewModel.toggleHapticFeedback(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = ObsidianBg,
+                            checkedTrackColor = CyberCyan
+                        ),
+                        modifier = Modifier.testTag("settings_haptic_switch")
+                    )
+                }
             }
         }
 

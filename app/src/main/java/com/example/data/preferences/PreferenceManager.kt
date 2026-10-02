@@ -67,7 +67,29 @@ class PreferenceManager(context: Context) {
         get() = prefs.getBoolean(KEY_STABILITY_MODE, true)
         set(value) = prefs.edit().putBoolean(KEY_STABILITY_MODE, value).apply()
 
+    // Dynamic Theme (Light / Dark mode)
+    var isDarkMode: Boolean
+        get() = prefs.getBoolean(KEY_DARK_MODE, true)
+        set(value) {
+            prefs.edit().putBoolean(KEY_DARK_MODE, value).apply()
+            _isDarkModeFlow.value = value
+        }
+
+    // Haptic Feedback
+    var hapticFeedbackEnabled: Boolean
+        get() = prefs.getBoolean(KEY_HAPTIC_FEEDBACK, true)
+        set(value) = prefs.edit().putBoolean(KEY_HAPTIC_FEEDBACK, value).apply()
+
+    init {
+        _isDarkModeFlow.value = isDarkMode
+    }
+
     companion object {
+        private const val KEY_DARK_MODE = "app_dark_mode"
+        private const val KEY_HAPTIC_FEEDBACK = "haptic_feedback_enabled"
+        private val _isDarkModeFlow = kotlinx.coroutines.flow.MutableStateFlow(true)
+        val isDarkModeFlow: kotlinx.coroutines.flow.StateFlow<Boolean> = _isDarkModeFlow
+
         private const val KEY_ORIG_WINDOW_ANIM = "orig_window_anim"
         private const val KEY_ORIG_TRANS_ANIM = "orig_trans_anim"
         private const val KEY_ORIG_ANIM_DUR = "orig_anim_dur"

@@ -27,6 +27,7 @@ import com.example.service.GameProfileService
 import com.example.service.ShizukuManager
 import com.example.telemetry.FpsMonitor
 import com.example.telemetry.SystemMonitor
+import com.example.util.HapticHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -116,6 +117,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _isKillingLag = MutableStateFlow(false)
     val isKillingLag: StateFlow<Boolean> = _isKillingLag.asStateFlow()
+
+    // Dynamic Theme (Light / Dark mode)
+    private val _isDarkMode = MutableStateFlow(prefs.isDarkMode)
+    val isDarkMode: StateFlow<Boolean> = _isDarkMode.asStateFlow()
+
+    // Haptic Feedback
+    private val _isHapticEnabled = MutableStateFlow(prefs.hapticFeedbackEnabled)
+    val isHapticEnabled: StateFlow<Boolean> = _isHapticEnabled.asStateFlow()
 
     data class AppPermissionsState(
         val hasOverlay: Boolean = false,
@@ -302,6 +311,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun refreshSettingsState() {
+        _isDarkMode.value = prefs.isDarkMode
+        _isHapticEnabled.value = prefs.hapticFeedbackEnabled
+
         // Read animation scales
         try {
             val cr = context.contentResolver
@@ -526,6 +538,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun toggleOverlay(enable: Boolean) {
+        triggerHaptic(HapticHelper.HapticType.MEDIUM)
         if (!Settings.canDrawOverlays(context)) {
             _isOverlayActive.value = false
             return
@@ -543,6 +556,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             context.stopService(intent)
             _isOverlayActive.value = false
         }
+    }
+
+    fun toggleDarkMode(enabled: Boolean? = null) {
+        val next = enabled ?: !_isDarkMode.value
+        _isDarkMode.value = next
+        prefs.isDarkMode = next
+        triggerHaptic(HapticHelper.HapticType.MEDIUM)
+    }
+
+    fun toggleHapticFeedback(enabled: Boolean) {
+        _isHapticEnabled.value = enabled
+        prefs.hapticFeedbackEnabled = enabled
+        if (enabled) {
+            triggerHaptic(HapticHelper.HapticType.SUCCESS)
+        }
+    }
+
+    fun triggerHaptic(type: HapticHelper.HapticType = HapticHelper.HapticType.LIGHT) {
+        HapticHelper.performHaptic(context, type)
     }
 
     fun launchGameWithProfile(profile: GameProfile) {

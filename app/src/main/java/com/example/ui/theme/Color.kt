@@ -27,3 +27,16 @@ val StatusSuccess = Color(0xFF00E676)
 val StatusWarning = Color(0xFFFFB300)
 val StatusError = Color(0xFFFF3366)
 val StatusIdle = Color(0xFF64748B)
+
+// Light Theme Palette
+val LightBg = Color(0xFFF1F5F9)
+val LightSurface = Color(0xFFFFFFFF)
+val LightSurfaceVariant = Color(0xFFE2E8F0)
+val LightCardBackground = Color(0xFFFFFFFF)
+val LightBorder = Color(0xFFCBD5E1)
+val LightGreenPrimary = Color(0xFF00A854)
+val LightCyanSecondary = Color(0xFF0097A7)
+val LightTextPrimary = Color(0xFF0F172A)
+val LightTextSecondary = Color(0xFF475569)
+val LightTextMuted = Color(0xFF64748B)
+

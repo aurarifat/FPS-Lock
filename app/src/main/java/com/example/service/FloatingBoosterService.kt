@@ -24,6 +24,8 @@ import com.example.data.preferences.PreferenceManager
 import com.example.telemetry.FpsMonitor
 import com.example.telemetry.SystemMonitor
 import com.example.ui.overlay.FloatingOverlayContent
+import com.example.ui.theme.DarkColorScheme
+import com.example.ui.theme.LightColorScheme
 import com.example.ui.theme.Typography
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -140,21 +142,26 @@ class FloatingBoosterService : Service() {
             overlayLifecycleOwner.attachTo(this)
 
             setContent {
-                MaterialTheme(typography = Typography) {
-                    val liveFps by fpsMonitor.currentFps.collectAsState()
-                    val fpsHistory by fpsMonitor.fpsHistory.collectAsState()
-                    val stability by fpsMonitor.stabilityState.collectAsState()
-                    val expanded by isExpanded.collectAsState()
-                    val opacity by currentOpacity.collectAsState()
-                    val telemetry by telemetryData.collectAsState()
-                    val message by lagKillMessage.collectAsState()
+                val isDarkMode by PreferenceManager.isDarkModeFlow.collectAsState()
+                val liveFps by fpsMonitor.currentFps.collectAsState()
+                val fpsHistory by fpsMonitor.fpsHistory.collectAsState()
+                val stability by fpsMonitor.stabilityState.collectAsState()
+                val expanded by isExpanded.collectAsState()
+                val opacity by currentOpacity.collectAsState()
+                val telemetry by telemetryData.collectAsState()
+                val message by lagKillMessage.collectAsState()
 
+                MaterialTheme(
+                    colorScheme = if (isDarkMode) DarkColorScheme else LightColorScheme,
+                    typography = Typography
+                ) {
                     FloatingOverlayContent(
                         fps = liveFps,
                         fpsHistory = fpsHistory,
                         stability = stability,
                         telemetry = telemetry,
                         isExpanded = expanded,
+                        isDarkMode = isDarkMode,
                         opacity = opacity,
                         lagKillMessage = message,
                         onToggleExpanded = {

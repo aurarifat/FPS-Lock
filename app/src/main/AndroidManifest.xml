@@ -3,6 +3,7 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Normal permissions -->
+    <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.intent.action.BATTERY_CHANGED" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />

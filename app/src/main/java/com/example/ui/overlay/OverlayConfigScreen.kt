@@ -18,12 +18,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
@@ -59,6 +62,7 @@ import com.example.ui.theme.BorderDark
 import com.example.ui.theme.CyberCyan
 import com.example.ui.theme.DarkSurfaceVariant
 import com.example.ui.theme.ElectricBlue
+import com.example.ui.theme.LightBg
 import com.example.ui.theme.NeonGreen
 import com.example.ui.theme.ObsidianBg
 import com.example.ui.theme.TextMuted
@@ -73,6 +77,7 @@ fun OverlayConfigScreen(viewModel: MainViewModel) {
     val isOverlayActive by viewModel.isOverlayActive.collectAsState()
     val permissionsState by viewModel.permissionsState.collectAsState()
     val hasOverlayPermission = permissionsState.hasOverlay
+    val isDarkMode by viewModel.isDarkMode.collectAsState()
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -96,7 +101,7 @@ fun OverlayConfigScreen(viewModel: MainViewModel) {
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(ObsidianBg)
+            .background(MaterialTheme.colorScheme.background)
             .testTag("overlay_config_screen"),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -168,15 +173,40 @@ fun OverlayConfigScreen(viewModel: MainViewModel) {
         // Live Preview Box
         item {
             GamingCard(
-                title = "HUD Bubble Preview",
+                title = "HUD Bubble Preview (${if (isDarkMode) "Dark" else "Light"} Theme)",
                 icon = Icons.Default.Visibility,
                 accentColor = CyberCyan
             ) {
-                Text(
-                    text = "Simulated appearance on your screen (${(opacity * 100).toInt()}% Opacity):",
-                    color = TextSecondary,
-                    fontSize = 12.sp
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Theme: ${if (isDarkMode) "Dark Stealth Mode" else "Light Solar Mode"}",
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = if (isDarkMode) "Dark" else "Light",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 11.sp
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Switch(
+                            checked = isDarkMode,
+                            onCheckedChange = { viewModel.toggleDarkMode(it) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = ObsidianBg,
+                                checkedTrackColor = NeonGreen
+                            ),
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(10.dp))
 
                 Box(
@@ -184,24 +214,29 @@ fun OverlayConfigScreen(viewModel: MainViewModel) {
                         .fillMaxWidth()
                         .height(110.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(ObsidianBg)
-                        .border(1.dp, BorderDark, RoundedCornerShape(12.dp))
+                        .background(if (isDarkMode) ObsidianBg else LightBg)
+                        .border(1.dp, if (isDarkMode) BorderDark else com.example.ui.theme.LightBorder, RoundedCornerShape(12.dp))
                         .padding(16.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     // Simulated Pill
+                    val previewBg = if (isDarkMode) DarkSurfaceVariant.copy(alpha = opacity) else com.example.ui.theme.LightSurface.copy(alpha = opacity)
+                    val previewBorder = if (isDarkMode) NeonGreen.copy(alpha = opacity) else com.example.ui.theme.LightGreenPrimary.copy(alpha = opacity)
+                    val previewFpsColor = if (isDarkMode) NeonGreen else com.example.ui.theme.LightGreenPrimary
+                    val previewHzColor = if (isDarkMode) CyberCyan else com.example.ui.theme.LightCyanSecondary
+
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(16.dp))
-                            .background(DarkSurfaceVariant.copy(alpha = opacity))
-                            .border(1.5.dp, NeonGreen.copy(alpha = opacity), RoundedCornerShape(16.dp))
+                            .background(previewBg)
+                            .border(1.5.dp, previewBorder, RoundedCornerShape(16.dp))
                             .padding(horizontal = 14.dp, vertical = 8.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             if (showFps) {
                                 Text(
                                     text = "60 FPS",
-                                    color = NeonGreen,
+                                    color = previewFpsColor,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -212,14 +247,14 @@ fun OverlayConfigScreen(viewModel: MainViewModel) {
                                     modifier = Modifier
                                         .width(1.dp)
                                         .height(12.dp)
-                                        .background(BorderDark)
+                                        .background(if (isDarkMode) BorderDark else com.example.ui.theme.LightBorder)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                             }
                             if (showHz) {
                                 Text(
                                     text = "90Hz",
-                                    color = CyberCyan,
+                                    color = previewHzColor,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold
                                 )

@@ -20,10 +20,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
@@ -63,6 +66,7 @@ import com.example.ui.theme.ObsidianBg
 import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import com.example.ui.theme.WarningAmber
 
 class MainActivity : ComponentActivity() {
 
@@ -74,7 +78,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         setContent {
-            GameBoostTheme {
+            val isDarkMode by viewModel.isDarkMode.collectAsState()
+            GameBoostTheme(darkTheme = isDarkMode) {
                 var currentScreen by remember { mutableStateOf<Screen>(Screen.Dashboard) }
                 val telemetry by viewModel.telemetry.collectAsState()
 
@@ -92,7 +97,7 @@ class MainActivity : ComponentActivity() {
                                         modifier = Modifier
                                             .size(34.dp)
                                             .clip(RoundedCornerShape(8.dp))
-                                            .border(1.dp, NeonGreen.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                                            .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
                                     ) {
                                         Image(
                                             painter = painterResource(id = R.drawable.ic_game_logo),
@@ -105,7 +110,7 @@ class MainActivity : ComponentActivity() {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Text(
                                                 text = "GameBoost",
-                                                color = TextPrimary,
+                                                color = MaterialTheme.colorScheme.onSurface,
                                                 fontSize = 17.sp,
                                                 fontWeight = FontWeight.ExtraBold
                                             )
@@ -117,13 +122,25 @@ class MainActivity : ComponentActivity() {
                                         }
                                         Text(
                                             text = currentScreen.title,
-                                            color = TextMuted,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             fontSize = 11.sp
                                         )
                                     }
                                 }
                             },
                             actions = {
+                                // Dynamic Light / Dark mode toggle with haptic feedback
+                                IconButton(
+                                    onClick = { viewModel.toggleDarkMode() },
+                                    modifier = Modifier.testTag("top_bar_theme_toggle_button")
+                                ) {
+                                    Icon(
+                                        imageVector = if (isDarkMode) Icons.Default.LightMode else Icons.Default.DarkMode,
+                                        contentDescription = if (isDarkMode) "Switch to Light Mode" else "Switch to Dark Mode",
+                                        tint = if (isDarkMode) WarningAmber else CyberCyan
+                                    )
+                                }
+
                                 IconButton(
                                     onClick = { currentScreen = Screen.SettingsScreen },
                                     modifier = Modifier.testTag("top_bar_settings_button")
@@ -131,19 +148,19 @@ class MainActivity : ComponentActivity() {
                                     Icon(
                                         imageVector = Icons.Default.Settings,
                                         contentDescription = "Settings",
-                                        tint = if (currentScreen == Screen.SettingsScreen) NeonGreen else TextSecondary
+                                        tint = if (currentScreen == Screen.SettingsScreen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             },
                             colors = TopAppBarDefaults.topAppBarColors(
-                                containerColor = DarkSurface
+                                containerColor = MaterialTheme.colorScheme.surface
                             )
                         )
                     },
                     bottomBar = {
                         NavigationBar(
-                            containerColor = DarkSurface,
-                            modifier = Modifier.border(1.dp, BorderDark, RoundedCornerShape(0.dp))
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            modifier = Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(0.dp))
                         ) {
                             Screen.getBottomNavItems().forEach { screen ->
                                 val selected = currentScreen == screen
@@ -165,11 +182,11 @@ class MainActivity : ComponentActivity() {
                                         )
                                     },
                                     colors = NavigationBarItemDefaults.colors(
-                                        selectedIconColor = NeonGreen,
-                                        selectedTextColor = NeonGreen,
-                                        unselectedIconColor = TextMuted,
-                                        unselectedTextColor = TextMuted,
-                                        indicatorColor = DarkSurface
+                                        selectedIconColor = MaterialTheme.colorScheme.primary,
+                                        selectedTextColor = MaterialTheme.colorScheme.primary,
+                                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        indicatorColor = MaterialTheme.colorScheme.surfaceVariant
                                     ),
                                     modifier = Modifier.testTag("nav_item_${screen.route}")
                                 )
@@ -181,7 +198,7 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(innerPadding)
-                            .background(ObsidianBg)
+                            .background(MaterialTheme.colorScheme.background)
                     ) {
                         when (currentScreen) {
                             Screen.Dashboard -> DashboardScreen(
