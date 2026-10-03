@@ -11,7 +11,7 @@ import rikka.shizuku.Shizuku
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
-class ShizukuManager(private val context: Context) {
+class ShizukuManager(private val context: Context) : IShizukuService {
 
     enum class ShizukuStatus {
         NOT_INSTALLED,
@@ -131,7 +131,7 @@ class ShizukuManager(private val context: Context) {
         }
     }
 
-    suspend fun executeCommand(command: String): Pair<Boolean, String> = withContext(Dispatchers.IO) {
+    override suspend fun executeCommand(command: String): Pair<Boolean, String> = withContext(Dispatchers.IO) {
         if (_status.value != ShizukuStatus.AUTHORIZED) {
             return@withContext Pair(false, "Shizuku not authorized or not running")
         }
@@ -166,6 +166,44 @@ class ShizukuManager(private val context: Context) {
             _lastCommandOutput.value = err
             Pair(false, err)
         }
+    }
+
+    override fun isAuthorized(): Boolean {
+        return _status.value == ShizukuStatus.AUTHORIZED
+    }
+
+    override suspend fun forceGlobalHighRefreshRate(rate: Int): Pair<Boolean, String> = withContext(Dispatchers.IO) {
+        if (!isAuthorized()) {
+            val msg = "Shizuku not authorized. Please start Shizuku and grant permission."
+            _lastCommandOutput.value = msg
+            return@withContext Pair(false, msg)
+        }
+
+        // Execute user requested commands to force high refresh rate globally
+        val cmdGlobalMin = "settings put global min_refresh_rate $rate"
+        val cmdGlobalPeak = "settings put global peak_refresh_rate $rate"
+        val cmdSystemMin = "settings put system min_refresh_rate $rate"
+        val cmdSystemPeak = "settings put system peak_refresh_rate $rate"
+        val cmdUserRate = "settings put system user_refresh_rate $rate"
+
+        val combinedCmd = "$cmdGlobalMin && $cmdGlobalPeak && $cmdSystemMin && $cmdSystemPeak && $cmdUserRate"
+        val (success, output) = executeCommand(combinedCmd)
+
+        val logMessage = if (success) {
+            "✓ Executed '$cmdGlobalMin' and '$cmdGlobalPeak' successfully via Shizuku service interface"
+        } else {
+            "Failed to execute high refresh rate command: $output"
+        }
+        _lastCommandOutput.value = logMessage
+        Pair(success, logMessage)
+    }
+
+    override suspend fun resetGlobalRefreshRate(): Pair<Boolean, String> = withContext(Dispatchers.IO) {
+        if (!isAuthorized()) {
+            return@withContext Pair(false, "Shizuku not authorized")
+        }
+        val cmd = "settings put global min_refresh_rate 60 && settings put global peak_refresh_rate 90 && settings put system min_refresh_rate 60 && settings put system peak_refresh_rate 90"
+        executeCommand(cmd)
     }
 
     suspend fun setAnimationScales(window: Float, transition: Float, animator: Float): Boolean {

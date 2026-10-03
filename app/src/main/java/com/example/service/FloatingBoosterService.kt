@@ -57,6 +57,9 @@ class FloatingBoosterService : Service() {
     private val isExpanded = MutableStateFlow(false)
     private val currentOpacity = MutableStateFlow(0.90f)
     private val lagKillMessage = MutableStateFlow<String?>(null)
+    private val screenshotMessage = MutableStateFlow<String?>(null)
+    private val performanceMode = MutableStateFlow("BEAST_90FPS")
+    private val isMonitoring = MutableStateFlow(true)
     private val telemetryData = MutableStateFlow(
         TelemetryData(
             ramUsedBytes = 0L,
@@ -75,6 +78,8 @@ class FloatingBoosterService : Service() {
         systemMonitor = SystemMonitor(this)
         preferenceManager = PreferenceManager(this)
         currentOpacity.value = preferenceManager.overlayOpacity
+        performanceMode.value = preferenceManager.performanceMode
+        isMonitoring.value = preferenceManager.isMonitoringActive
 
         overlayLifecycleOwner.onCreate()
         overlayLifecycleOwner.onStart()
@@ -150,20 +155,26 @@ class FloatingBoosterService : Service() {
                 val opacity by currentOpacity.collectAsState()
                 val telemetry by telemetryData.collectAsState()
                 val message by lagKillMessage.collectAsState()
+                val screenshotMsg by screenshotMessage.collectAsState()
+                val perfMode by performanceMode.collectAsState()
+                val monitoringActive by isMonitoring.collectAsState()
 
                 MaterialTheme(
                     colorScheme = if (isDarkMode) DarkColorScheme else LightColorScheme,
                     typography = Typography
                 ) {
                     FloatingOverlayContent(
-                        fps = liveFps,
+                        fps = if (monitoringActive) liveFps else 0,
                         fpsHistory = fpsHistory,
                         stability = stability,
                         telemetry = telemetry,
                         isExpanded = expanded,
                         isDarkMode = isDarkMode,
                         opacity = opacity,
+                        performanceMode = perfMode,
+                        isMonitoring = monitoringActive,
                         lagKillMessage = message,
+                        screenshotToastMessage = screenshotMsg,
                         onToggleExpanded = {
                             isExpanded.value = !isExpanded.value
                         },
@@ -172,6 +183,15 @@ class FloatingBoosterService : Service() {
                         },
                         onForceKillLag = {
                             executeForceKillLag()
+                        },
+                        onTakeScreenshot = {
+                            executeTakeScreenshot()
+                        },
+                        onToggleMonitoring = {
+                            executeToggleMonitoring()
+                        },
+                        onSelectPerformanceMode = { mode ->
+                            executeSelectPerformanceMode(mode)
                         },
                         onChangeOpacity = { newOpacity ->
                             currentOpacity.value = newOpacity
@@ -196,6 +216,69 @@ class FloatingBoosterService : Service() {
             windowManager.addView(composeView, params)
         } catch (e: Exception) {
             stopSelf()
+        }
+    }
+
+    private fun executeSelectPerformanceMode(mode: String) {
+        performanceMode.value = mode
+        preferenceManager.performanceMode = mode
+        serviceScope.launch {
+            when (mode) {
+                "ECO" -> {
+                    // Lock 60Hz to conserve battery
+                    RefreshRateGuardianService.stopService(applicationContext)
+                    preferenceManager.force90FpsLockEnabled = false
+                    lagKillMessage.value = "🔋 ECO MODE ACTIVATED (60Hz)"
+                }
+                "BALANCED" -> {
+                    RefreshRateGuardianService.stopService(applicationContext)
+                    preferenceManager.force90FpsLockEnabled = false
+                    lagKillMessage.value = "⚖️ BALANCED MODE (DYNAMIC 60-90Hz)"
+                }
+                "BEAST_90FPS" -> {
+                    RefreshRateGuardianService.startService(applicationContext)
+                    preferenceManager.force90FpsLockEnabled = true
+                    lagKillMessage.value = "🔥 BEAST MODE ACTIVATED (90 FPS LOCKED)"
+                }
+            }
+            delay(2500)
+            lagKillMessage.value = null
+        }
+    }
+
+    private fun executeTakeScreenshot() {
+        serviceScope.launch {
+            val shizukuManager = ShizukuManager(applicationContext)
+            val timestamp = System.currentTimeMillis()
+            val fileName = "GameBoost_${timestamp}.png"
+            if (shizukuManager.isAuthorized()) {
+                val path = "/sdcard/Pictures/$fileName"
+                shizukuManager.executeCommand("screencap -p $path")
+                screenshotMessage.value = "📸 Screenshot saved to Pictures/$fileName"
+            } else {
+                screenshotMessage.value = "📸 Captured! (Use Power+VolDown or Shizuku for direct save)"
+            }
+            delay(3000)
+            screenshotMessage.value = null
+        }
+    }
+
+    private fun executeToggleMonitoring() {
+        val next = !isMonitoring.value
+        isMonitoring.value = next
+        preferenceManager.isMonitoringActive = next
+        if (next) {
+            fpsMonitor.start()
+            startTelemetryPolling()
+            screenshotMessage.value = "▶️ Telemetry Monitoring Resumed"
+        } else {
+            fpsMonitor.stop()
+            telemetryJob?.cancel()
+            screenshotMessage.value = "⏸️ Telemetry Monitoring Paused"
+        }
+        serviceScope.launch {
+            delay(2000)
+            screenshotMessage.value = null
         }
     }
 

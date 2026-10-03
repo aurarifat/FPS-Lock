@@ -24,6 +24,7 @@ import com.example.data.model.TelemetryData
 import com.example.data.preferences.PreferenceManager
 import com.example.service.FloatingBoosterService
 import com.example.service.GameProfileService
+import com.example.service.RefreshRateGuardianService
 import com.example.service.ShizukuManager
 import com.example.telemetry.FpsMonitor
 import com.example.telemetry.SystemMonitor
@@ -125,6 +126,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // Haptic Feedback
     private val _isHapticEnabled = MutableStateFlow(prefs.hapticFeedbackEnabled)
     val isHapticEnabled: StateFlow<Boolean> = _isHapticEnabled.asStateFlow()
+
+    // Force 90 FPS Global Lock State
+    private val _isForce90FpsLocked = MutableStateFlow(prefs.force90FpsLockEnabled)
+    val isForce90FpsLocked: StateFlow<Boolean> = _isForce90FpsLocked.asStateFlow()
 
     data class AppPermissionsState(
         val hasOverlay: Boolean = false,
@@ -313,6 +318,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun refreshSettingsState() {
         _isDarkMode.value = prefs.isDarkMode
         _isHapticEnabled.value = prefs.hapticFeedbackEnabled
+        _isForce90FpsLocked.value = prefs.force90FpsLockEnabled
 
         // Read animation scales
         try {
@@ -570,6 +576,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         prefs.hapticFeedbackEnabled = enabled
         if (enabled) {
             triggerHaptic(HapticHelper.HapticType.SUCCESS)
+        }
+    }
+
+    fun toggleForce90FpsLock(enabled: Boolean) {
+        triggerHaptic(HapticHelper.HapticType.SUCCESS)
+        _isForce90FpsLocked.value = enabled
+        prefs.force90FpsLockEnabled = enabled
+        if (enabled) {
+            RefreshRateGuardianService.startService(context)
+            viewModelScope.launch {
+                if (shizukuManager.isAuthorized()) {
+                    shizukuManager.forceGlobalHighRefreshRate(90)
+                }
+            }
+        } else {
+            RefreshRateGuardianService.stopService(context)
+            viewModelScope.launch {
+                if (shizukuManager.isAuthorized()) {
+                    shizukuManager.resetGlobalRefreshRate()
+                }
+            }
+        }
+    }
+
+    fun forceShizuku90FpsLock() {
+        viewModelScope.launch {
+            triggerHaptic(HapticHelper.HapticType.SUCCESS)
+            val (success, _) = shizukuManager.forceGlobalHighRefreshRate(90)
+            if (success) {
+                _isForce90FpsLocked.value = true
+                prefs.force90FpsLockEnabled = true
+                RefreshRateGuardianService.startService(context)
+            }
         }
     }
 

@@ -75,6 +75,16 @@
                 android:value="Gaming profile lifecycle and automated setting restoration" />
         </service>
 
+        <!-- Force 90 FPS Refresh Rate Guardian Service -->
+        <service
+            android:name=".service.RefreshRateGuardianService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Enforce persistent 90Hz display refresh rate and prevent downclocking across all apps" />
+        </service>
+
         <!-- Shizuku Provider -->
         <provider
             android:name="rikka.shizuku.ShizukuProvider"

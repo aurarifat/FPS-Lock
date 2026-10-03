@@ -28,11 +28,18 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Thermostat
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -81,9 +88,11 @@ import com.example.ui.theme.WarningAmber
 import com.example.util.HapticHelper
 
 /**
- * Jetpack Compose UI for the Floating Window Service displaying a real-time
- * frame rate counter on top of other applications with dynamic Light/Dark theme support
- * and sensory haptic feedback.
+ * Floating Game Booster Bubble & Expanded In-Game Gaming Toolbar.
+ * Features:
+ * - Compact Bubble: Live FPS, Temperature, RAM, pulse indicator.
+ * - Expanded Toolbar: Performance Mode (Eco/Balanced/Beast 90FPS),
+ *   Clear Memory, Screenshot, Start/Stop Monitoring, Thermal Protection Guard.
  */
 @Composable
 fun FloatingOverlayContent(
@@ -94,11 +103,17 @@ fun FloatingOverlayContent(
     isExpanded: Boolean,
     isDarkMode: Boolean = true,
     opacity: Float,
-    lagKillMessage: String?,
+    performanceMode: String = "BEAST_90FPS",
+    isMonitoring: Boolean = true,
+    lagKillMessage: String? = null,
+    screenshotToastMessage: String? = null,
     onToggleExpanded: () -> Unit,
     onClose: () -> Unit,
     onForceKillLag: () -> Unit,
     onChangeOpacity: (Float) -> Unit,
+    onSelectPerformanceMode: (String) -> Unit = {},
+    onTakeScreenshot: () -> Unit = {},
+    onToggleMonitoring: () -> Unit = {},
     onDragDelta: (dx: Float, dy: Float) -> Unit
 ) {
     val context = LocalContext.current
@@ -125,11 +140,13 @@ fun FloatingOverlayContent(
         modifier = Modifier
     ) {
         if (!isExpanded) {
-            // COMPACT FLOATING BUBBLE / PILL
+            // COMPACT FLOATING GAME BOOSTER BUBBLE (FPS + TEMP + RAM)
             CompactFpsBubble(
                 fps = fps,
                 fpsColor = fpsColor,
-                displayHz = telemetry.displayRefreshRate.toInt(),
+                temperatureC = telemetry.batteryTemperatureC,
+                ramUsedBytes = telemetry.ramUsedBytes,
+                ramTotalBytes = telemetry.ramTotalBytes,
                 isDarkMode = isDarkMode,
                 opacity = opacity,
                 pulseAlpha = pulseAlpha,
@@ -137,16 +154,10 @@ fun FloatingOverlayContent(
                     HapticHelper.performHaptic(context, HapticHelper.HapticType.MEDIUM)
                     onToggleExpanded()
                 },
-                onDragDelta = { dx, dy ->
-                    onDragDelta(dx, dy)
-                },
-                onClose = {
-                    HapticHelper.performHaptic(context, HapticHelper.HapticType.LIGHT)
-                    onClose()
-                }
+                onDragDelta = onDragDelta
             )
         } else {
-            // EXPANDED GAMING TELEMETRY HUD
+            // EXPANDED IN-GAME GAMING TOOLBAR / HUD
             ExpandedFpsHud(
                 fps = fps,
                 fpsColor = fpsColor,
@@ -156,7 +167,10 @@ fun FloatingOverlayContent(
                 isDarkMode = isDarkMode,
                 opacity = opacity,
                 pulseAlpha = pulseAlpha,
+                performanceMode = performanceMode,
+                isMonitoring = isMonitoring,
                 lagKillMessage = lagKillMessage,
+                screenshotToastMessage = screenshotToastMessage,
                 onToggleExpanded = {
                     HapticHelper.performHaptic(context, HapticHelper.HapticType.MEDIUM)
                     onToggleExpanded()
@@ -169,6 +183,18 @@ fun FloatingOverlayContent(
                     HapticHelper.performHaptic(context, HapticHelper.HapticType.SUCCESS)
                     onForceKillLag()
                 },
+                onTakeScreenshot = {
+                    HapticHelper.performHaptic(context, HapticHelper.HapticType.SUCCESS)
+                    onTakeScreenshot()
+                },
+                onToggleMonitoring = {
+                    HapticHelper.performHaptic(context, HapticHelper.HapticType.LIGHT)
+                    onToggleMonitoring()
+                },
+                onSelectPerformanceMode = { mode ->
+                    HapticHelper.performHaptic(context, HapticHelper.HapticType.MEDIUM)
+                    onSelectPerformanceMode(mode)
+                },
                 onChangeOpacity = { op ->
                     HapticHelper.performHaptic(context, HapticHelper.HapticType.LIGHT)
                     onChangeOpacity(op)
@@ -179,31 +205,41 @@ fun FloatingOverlayContent(
     }
 }
 
+/**
+ * Compact Floating Game Booster Bubble showing FPS + Temperature + RAM
+ */
 @Composable
 private fun CompactFpsBubble(
     fps: Int,
     fpsColor: Color,
-    displayHz: Int,
+    temperatureC: Float,
+    ramUsedBytes: Long,
+    ramTotalBytes: Long,
     isDarkMode: Boolean,
     opacity: Float,
     pulseAlpha: Float,
     onToggleExpanded: () -> Unit,
-    onDragDelta: (dx: Float, dy: Float) -> Unit,
-    onClose: () -> Unit
+    onDragDelta: (dx: Float, dy: Float) -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
 
     val bgColor = if (isDarkMode) ObsidianBg else LightSurface
     val borderColor = if (isDarkMode) fpsColor.copy(alpha = 0.85f) else fpsColor.copy(alpha = 0.95f)
     val textColor = if (isDarkMode) TextPrimary else LightTextPrimary
-    val hzBg = if (isDarkMode) DarkSurfaceVariant else LightSurfaceVariant
-    val hzTextColor = if (isDarkMode) CyberCyan else LightCyanSecondary
     val iconTint = if (isDarkMode) TextSecondary else LightTextSecondary
+    val badgeBg = if (isDarkMode) DarkSurfaceVariant else LightSurfaceVariant
+
+    val ramPercent = if (ramTotalBytes > 0) ((ramUsedBytes.toFloat() / ramTotalBytes.toFloat()) * 100).toInt() else 50
+    val tempColor = when {
+        temperatureC >= 42.0 -> AlertRed
+        temperatureC >= 38.0 -> WarningAmber
+        else -> if (isDarkMode) NeonGreen else LightGreenPrimary
+    }
 
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(22.dp))
-            .background(bgColor.copy(alpha = opacity.coerceIn(0.4f, 1.0f)))
+            .background(bgColor.copy(alpha = opacity.coerceIn(0.45f, 1.0f)))
             .border(1.5.dp, borderColor, RoundedCornerShape(22.dp))
             .clickable(
                 interactionSource = interactionSource,
@@ -214,12 +250,12 @@ private fun CompactFpsBubble(
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             // Draggable grip icon
             Box(
                 modifier = Modifier
-                    .size(24.dp)
+                    .size(20.dp)
                     .pointerInput(Unit) {
                         detectDragGestures { change, dragAmount ->
                             change.consume()
@@ -232,60 +268,80 @@ private fun CompactFpsBubble(
                     imageVector = Icons.Default.DragIndicator,
                     contentDescription = "Drag overlay",
                     tint = iconTint,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(15.dp)
                 )
             }
 
             // Real-time pulse dot
             Box(
                 modifier = Modifier
-                    .size(8.dp)
+                    .size(7.dp)
                     .clip(CircleShape)
                     .background(fpsColor.copy(alpha = pulseAlpha))
             )
 
-            // Real-time FPS number
-            Text(
-                text = "$fps",
-                color = fpsColor,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Black,
-                fontFamily = FontFamily.Monospace
-            )
+            // FPS Readout
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    text = "$fps",
+                    color = fpsColor,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Black,
+                    fontFamily = FontFamily.Monospace
+                )
+                Text(
+                    text = "FPS",
+                    color = textColor,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(start = 2.dp, bottom = 1.dp)
+                )
+            }
 
-            Text(
-                text = "FPS",
-                color = textColor,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold
-            )
-
-            // Display Hz pill
+            // Temperature Chip
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(6.dp))
-                    .background(hzBg)
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                    .background(badgeBg)
+                    .padding(horizontal = 5.dp, vertical = 2.dp)
             ) {
                 Text(
-                    text = "${displayHz}Hz",
-                    color = hzTextColor,
+                    text = "${temperatureC.toInt()}°C",
+                    color = tempColor,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            // RAM % Chip
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(badgeBg)
+                    .padding(horizontal = 5.dp, vertical = 2.dp)
+            ) {
+                Text(
+                    text = "$ramPercent% RAM",
+                    color = if (isDarkMode) CyberCyan else LightCyanSecondary,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.SemiBold
                 )
             }
 
-            // Quick expand action
+            // Expand icon
             Icon(
                 imageVector = Icons.Default.Fullscreen,
                 contentDescription = "Expand HUD",
                 tint = iconTint,
-                modifier = Modifier.size(16.dp)
+                modifier = Modifier.size(15.dp)
             )
         }
     }
 }
 
+/**
+ * Expanded In-Game Gaming Toolbar / HUD
+ */
 @Composable
 private fun ExpandedFpsHud(
     fps: Int,
@@ -296,10 +352,16 @@ private fun ExpandedFpsHud(
     isDarkMode: Boolean,
     opacity: Float,
     pulseAlpha: Float,
+    performanceMode: String,
+    isMonitoring: Boolean,
     lagKillMessage: String?,
+    screenshotToastMessage: String?,
     onToggleExpanded: () -> Unit,
     onClose: () -> Unit,
     onForceKillLag: () -> Unit,
+    onTakeScreenshot: () -> Unit,
+    onToggleMonitoring: () -> Unit,
+    onSelectPerformanceMode: (String) -> Unit,
     onChangeOpacity: (Float) -> Unit,
     onDragDelta: (dx: Float, dy: Float) -> Unit
 ) {
@@ -317,9 +379,11 @@ private fun ExpandedFpsHud(
     val primaryText = if (isDarkMode) TextPrimary else LightTextPrimary
     val hzColor = if (isDarkMode) CyberCyan else LightCyanSecondary
 
+    val isThermalHot = telemetry.batteryTemperatureC >= 42.0
+
     Box(
         modifier = Modifier
-            .width(280.dp)
+            .width(290.dp)
             .clip(RoundedCornerShape(16.dp))
             .background(hudBg.copy(alpha = opacity.coerceIn(0.5f, 1.0f)))
             .border(1.5.dp, hudBorder, RoundedCornerShape(16.dp))
@@ -359,7 +423,7 @@ private fun ExpandedFpsHud(
                             .background(fpsColor.copy(alpha = pulseAlpha))
                     )
                     Text(
-                        text = "GAMEBOOST HUD",
+                        text = "GAMEBOOSTER HUD",
                         color = headerText,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
@@ -394,7 +458,7 @@ private fun ExpandedFpsHud(
                 }
             }
 
-            // MAIN FPS DIGITAL DISPLAY
+            // MAIN FPS DIGITAL DISPLAY + REFRESH RATE
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.Bottom,
@@ -404,17 +468,17 @@ private fun ExpandedFpsHud(
                     Text(
                         text = "$fps",
                         color = fpsColor,
-                        fontSize = 42.sp,
+                        fontSize = 38.sp,
                         fontWeight = FontWeight.Black,
                         fontFamily = FontFamily.Monospace,
-                        lineHeight = 44.sp
+                        lineHeight = 40.sp
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Column(modifier = Modifier.padding(bottom = 6.dp)) {
+                    Column(modifier = Modifier.padding(bottom = 4.dp)) {
                         Text(
                             text = "FPS",
                             color = primaryText,
-                            fontSize = 13.sp,
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.ExtraBold
                         )
                         Text(
@@ -428,7 +492,7 @@ private fun ExpandedFpsHud(
 
                 Column(
                     horizontalAlignment = Alignment.End,
-                    modifier = Modifier.padding(bottom = 6.dp)
+                    modifier = Modifier.padding(bottom = 4.dp)
                 ) {
                     Box(
                         modifier = Modifier
@@ -437,7 +501,7 @@ private fun ExpandedFpsHud(
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Text(
-                            text = if (stability.isStable) "STABLE" else "DROP: ${stability.droppedFrames}",
+                            text = if (stability.isStable) "STABLE" else "DROPS: ${stability.droppedFrames}",
                             color = if (stability.isStable) fpsColor else AlertRed,
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold
@@ -454,11 +518,6 @@ private fun ExpandedFpsHud(
             }
 
             // REAL-TIME FRAME RATE TRAJECTORY GRAPH
-            Text(
-                text = "Real-Time Frame Cadence (Last 20s)",
-                color = mutedText,
-                fontSize = 10.sp
-            )
             RealTimeFpsGraph(
                 history = fpsHistory,
                 fpsColor = fpsColor,
@@ -466,7 +525,7 @@ private fun ExpandedFpsHud(
                 isDarkMode = isDarkMode
             )
 
-            // HARDWARE TELEMETRY STRIP
+            // HARDWARE TELEMETRY STRIP (RAM, THERMAL, BATTERY)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -488,7 +547,7 @@ private fun ExpandedFpsHud(
                     Text(text = "THERMAL", color = mutedText, fontSize = 9.sp)
                     Text(
                         text = String.format("%.1f°C", telemetry.batteryTemperatureC),
-                        color = if (telemetry.batteryTemperatureC > 42.0) AlertRed else WarningAmber,
+                        color = if (isThermalHot) AlertRed else WarningAmber,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -509,63 +568,175 @@ private fun ExpandedFpsHud(
                 progress = { ramFraction.coerceIn(0f, 1f) },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(4.dp)
+                    .height(3.dp)
                     .clip(RoundedCornerShape(2.dp)),
                 color = if (ramFraction > 0.85f) AlertRed else hzColor,
                 trackColor = hudBorder
             )
 
-            // QUICK LAG PURGE ACTION BUTTON
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(AlertRed)
-                    .clickable(onClick = onForceKillLag)
-                    .padding(vertical = 8.dp),
-                contentAlignment = Alignment.Center
-            ) {
+            // PERFORMANCE MODE SELECTOR CHIPS
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "PERFORMANCE MODE",
+                    color = mutedText,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold
+                )
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.FlashOn,
-                        contentDescription = "Force kill lag",
-                        tint = Color.White,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Text(
-                        text = "⚡ FORCE KILL LAG",
-                        color = Color.White,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Black
-                    )
+                    listOf("ECO" to "Eco (60Hz)", "BALANCED" to "Balanced", "BEAST_90FPS" to "🔥 Beast 90FPS").forEach { (modeKey, modeTitle) ->
+                        val isSelected = performanceMode.equals(modeKey, ignoreCase = true)
+                        val chipBg = if (isSelected) (if (modeKey == "BEAST_90FPS") NeonGreen else hzColor) else headerBg
+                        val chipTextColor = if (isSelected) ObsidianBg else subText
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(chipBg)
+                                .clickable { onSelectPerformanceMode(modeKey) }
+                                .padding(vertical = 5.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = modeTitle,
+                                color = chipTextColor,
+                                fontSize = 9.sp,
+                                fontWeight = if (isSelected) FontWeight.Black else FontWeight.Medium
+                            )
+                        }
+                    }
                 }
             }
 
-            // TEMPORARY TOAST FOR LAG KILL
-            AnimatedVisibility(
-                visible = lagKillMessage != null,
-                enter = fadeIn(),
-                exit = fadeOut()
+            // GAMING QUICK ACTION GRID (CLEAR MEMORY, SCREENSHOT, MONITORING, THERMAL GUARD)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                lagKillMessage?.let { msg ->
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(fpsColor.copy(alpha = 0.2f))
-                            .padding(6.dp),
-                        contentAlignment = Alignment.Center
+                // 1. Clear Memory Button
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(AlertRed)
+                        .clickable(onClick = onForceKillLag)
+                        .padding(vertical = 7.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
+                        Icon(imageVector = Icons.Default.DeleteSweep, contentDescription = "Clear RAM", tint = Color.White, modifier = Modifier.size(13.dp))
+                        Text(text = "CLEAR RAM", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Black)
+                    }
+                }
+
+                // 2. Screenshot Button
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(headerBg)
+                        .clickable(onClick = onTakeScreenshot)
+                        .padding(vertical = 7.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(imageVector = Icons.Default.CameraAlt, contentDescription = "Screenshot", tint = hzColor, modifier = Modifier.size(13.dp))
+                        Text(text = "SCREENSHOT", color = primaryText, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                // 3. Start/Stop Monitoring Toggle
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(headerBg)
+                        .clickable(onClick = onToggleMonitoring)
+                        .padding(vertical = 7.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isMonitoring) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = "Monitor status",
+                            tint = if (isMonitoring) NeonGreen else WarningAmber,
+                            modifier = Modifier.size(13.dp)
+                        )
                         Text(
-                            text = msg,
-                            color = fpsColor,
+                            text = if (isMonitoring) "FPS: LIVE" else "FPS: PAUSED",
+                            color = primaryText,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
+                }
+
+                // 4. Thermal Protection Indicator
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(if (isThermalHot) AlertRed.copy(alpha = 0.2f) else headerBg)
+                        .padding(vertical = 7.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Thermostat,
+                            contentDescription = "Thermal Guard",
+                            tint = if (isThermalHot) AlertRed else NeonGreen,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Text(
+                            text = if (isThermalHot) "HOT: GUARD ON" else "THERMAL: SAFE",
+                            color = if (isThermalHot) AlertRed else NeonGreen,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+
+            // TEMPORARY TOAST BANNER FOR FEEDBACK (CLEAR RAM / SCREENSHOT)
+            AnimatedVisibility(
+                visible = lagKillMessage != null || screenshotToastMessage != null,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                val bannerText = screenshotToastMessage ?: lagKillMessage ?: ""
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(NeonGreen.copy(alpha = 0.2f))
+                        .padding(6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = bannerText,
+                        color = NeonGreen,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
 
@@ -576,7 +747,7 @@ private fun ExpandedFpsHud(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "HUD Opacity",
+                    text = "HUD Transparency",
                     color = mutedText,
                     fontSize = 10.sp
                 )
@@ -622,12 +793,12 @@ private fun RealTimeFpsGraph(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(48.dp)
+            .height(44.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(graphBg)
             .padding(4.dp)
     ) {
-        Canvas(modifier = Modifier.fillMaxWidth().height(40.dp)) {
+        Canvas(modifier = Modifier.fillMaxWidth().height(36.dp)) {
             val width = size.width
             val height = size.height
             if (history.isEmpty() || width <= 0 || height <= 0) return@Canvas

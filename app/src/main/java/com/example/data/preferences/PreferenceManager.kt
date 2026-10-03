@@ -80,15 +80,46 @@ class PreferenceManager(context: Context) {
         get() = prefs.getBoolean(KEY_HAPTIC_FEEDBACK, true)
         set(value) = prefs.edit().putBoolean(KEY_HAPTIC_FEEDBACK, value).apply()
 
+    // Force 90 FPS Global Lock
+    var force90FpsLockEnabled: Boolean
+        get() = prefs.getBoolean(KEY_FORCE_90FPS_LOCK, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_FORCE_90FPS_LOCK, value).apply()
+            _force90FpsLockFlow.value = value
+        }
+
+    // Performance Mode ("ECO", "BALANCED", "BEAST_90FPS")
+    var performanceMode: String
+        get() = prefs.getString(KEY_PERFORMANCE_MODE, "BEAST_90FPS") ?: "BEAST_90FPS"
+        set(value) = prefs.edit().putString(KEY_PERFORMANCE_MODE, value).apply()
+
+    // Monitoring Active
+    var isMonitoringActive: Boolean
+        get() = prefs.getBoolean(KEY_MONITORING_ACTIVE, true)
+        set(value) = prefs.edit().putBoolean(KEY_MONITORING_ACTIVE, value).apply()
+
+    // Thermal Protection
+    var thermalProtectionEnabled: Boolean
+        get() = prefs.getBoolean(KEY_THERMAL_PROTECTION, true)
+        set(value) = prefs.edit().putBoolean(KEY_THERMAL_PROTECTION, value).apply()
+
     init {
         _isDarkModeFlow.value = isDarkMode
+        _force90FpsLockFlow.value = force90FpsLockEnabled
     }
 
     companion object {
         private const val KEY_DARK_MODE = "app_dark_mode"
         private const val KEY_HAPTIC_FEEDBACK = "haptic_feedback_enabled"
+        private const val KEY_FORCE_90FPS_LOCK = "force_90fps_lock"
+        private const val KEY_PERFORMANCE_MODE = "performance_mode"
+        private const val KEY_MONITORING_ACTIVE = "monitoring_active"
+        private const val KEY_THERMAL_PROTECTION = "thermal_protection"
         private val _isDarkModeFlow = kotlinx.coroutines.flow.MutableStateFlow(true)
         val isDarkModeFlow: kotlinx.coroutines.flow.StateFlow<Boolean> = _isDarkModeFlow
+
+        private val _force90FpsLockFlow = kotlinx.coroutines.flow.MutableStateFlow(false)
+        val force90FpsLockFlow: kotlinx.coroutines.flow.StateFlow<Boolean> = _force90FpsLockFlow
 
         private const val KEY_ORIG_WINDOW_ANIM = "orig_window_anim"
         private const val KEY_ORIG_TRANS_ANIM = "orig_trans_anim"

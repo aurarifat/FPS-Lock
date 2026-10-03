@@ -218,15 +218,33 @@ fun ShizukuScreen(viewModel: MainViewModel) {
 
                     NeonOutlinedButton(
                         modifier = Modifier.weight(1f),
-                        text = "Lock 90Hz (XPad Peak)",
-                        accentColor = if (deviceInfo.currentRefreshRate == 90f) NeonGreen else NeonGreen,
+                        text = "Force 90Hz Globally",
+                        icon = Icons.Default.Speed,
+                        accentColor = NeonGreen,
                         enabled = isAuthorized,
                         onClick = {
                             scope.launch {
-                                viewModel.shizukuManager.setRefreshRate(90f)
+                                viewModel.forceShizuku90FpsLock()
                                 viewModel.refreshSettingsState()
                             }
                         }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(DarkSurfaceVariant)
+                        .padding(8.dp)
+                ) {
+                    Text(
+                        text = "Shell Interface: 'settings put global min_refresh_rate 90' & 'settings put global peak_refresh_rate 90'",
+                        color = CyberCyan,
+                        fontSize = 10.sp,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
                     )
                 }
 
@@ -238,7 +256,7 @@ fun ShizukuScreen(viewModel: MainViewModel) {
                     enabled = isAuthorized,
                     onClick = {
                         scope.launch {
-                            viewModel.shizukuManager.executeCommand("settings delete system peak_refresh_rate && settings delete system min_refresh_rate")
+                            viewModel.shizukuManager.resetGlobalRefreshRate()
                             viewModel.refreshSettingsState()
                         }
                     }

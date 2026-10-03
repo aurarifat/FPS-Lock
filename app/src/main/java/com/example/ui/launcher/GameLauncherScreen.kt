@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Gamepad
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Tune
@@ -35,6 +36,9 @@ import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
@@ -95,7 +99,7 @@ fun GameLauncherScreen(
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(ObsidianBg)
+            .background(MaterialTheme.colorScheme.background)
             .testTag("game_launcher_screen"),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -382,51 +386,73 @@ fun GameLauncherScreen(
     }
 
     // Add Game from Installed Apps Dialog
+    var appSearchQuery by remember { mutableStateOf("") }
     if (showAddGameDialog) {
         AlertDialog(
-            onDismissRequest = { showAddGameDialog = false },
+            onDismissRequest = {
+                showAddGameDialog = false
+                appSearchQuery = ""
+            },
             title = {
                 Text("Select App to Add as Game", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             },
             text = {
-                LazyColumn(modifier = Modifier.height(320.dp)) {
-                    val availableApps = installedApps.filter { app ->
-                        gameProfiles.none { it.packageName == app.packageName }
-                    }
-                    if (availableApps.isEmpty()) {
-                        item {
-                            Text("All detected games and apps have already been added!", color = TextMuted, fontSize = 12.sp)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = appSearchQuery,
+                        onValueChange = { appSearchQuery = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("Search installed apps...", fontSize = 13.sp) },
+                        leadingIcon = { Icon(imageVector = Icons.Default.Search, contentDescription = "Search", tint = CyberCyan) },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = NeonGreen,
+                            unfocusedBorderColor = BorderDark
+                        )
+                    )
+
+                    LazyColumn(modifier = Modifier.height(280.dp)) {
+                        val availableApps = installedApps.filter { app ->
+                            gameProfiles.none { it.packageName == app.packageName } &&
+                                    (app.appName.contains(appSearchQuery, ignoreCase = true) ||
+                                            app.packageName.contains(appSearchQuery, ignoreCase = true))
                         }
-                    } else {
-                        items(availableApps) { app ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        scope.launch {
-                                            viewModel.gameDao.insertOrUpdateProfile(
-                                                GameProfile(
-                                                    packageName = app.packageName,
-                                                    gameName = app.appName,
-                                                    isFavorite = false,
-                                                    targetRefreshRate = 90f,
-                                                    targetAnimationScale = 0.5f,
-                                                    enableDnd = true
+                        if (availableApps.isEmpty()) {
+                            item {
+                                Text("No matching apps found.", color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(16.dp))
+                            }
+                        } else {
+                            items(availableApps) { app ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            scope.launch {
+                                                viewModel.gameDao.insertOrUpdateProfile(
+                                                    GameProfile(
+                                                        packageName = app.packageName,
+                                                        gameName = app.appName,
+                                                        isFavorite = false,
+                                                        targetRefreshRate = 90f,
+                                                        targetAnimationScale = 0.5f,
+                                                        enableDnd = true
+                                                    )
                                                 )
-                                            )
-                                            showAddGameDialog = false
+                                                showAddGameDialog = false
+                                                appSearchQuery = ""
+                                            }
                                         }
+                                        .padding(vertical = 10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(app.appName, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                        Text(app.packageName, color = TextMuted, fontSize = 10.sp)
                                     }
-                                    .padding(vertical = 10.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(app.appName, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                                    Text(app.packageName, color = TextMuted, fontSize = 10.sp)
-                                }
-                                if (app.isGame) {
-                                    StatusBadge(status = "GAME", color = NeonGreen)
+                                    if (app.isGame) {
+                                        StatusBadge(status = "GAME", color = NeonGreen)
+                                    }
                                 }
                             }
                         }
@@ -434,7 +460,10 @@ fun GameLauncherScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showAddGameDialog = false }) {
+                TextButton(onClick = {
+                    showAddGameDialog = false
+                    appSearchQuery = ""
+                }) {
                     Text("Close", color = TextMuted)
                 }
             },
@@ -544,7 +573,7 @@ fun GameProfileCard(
                 }
 
                 NeonPrimaryButton(
-                    text = "Launch Game",
+                    text = "Play at 90 FPS",
                     icon = Icons.Default.PlayArrow,
                     onClick = onLaunch
                 )
