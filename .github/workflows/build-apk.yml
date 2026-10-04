@@ -177,17 +177,15 @@ jobs:
           TAG_NAME="debug-apk-build-${{ github.run_number }}-${{ github.run_attempt }}"
           RELEASE_TITLE="Debug APK Build #${{ github.run_number }}"
 
-          NOTES=$(cat <<EOF
-This is an automatically generated debug APK.
-The APK was built by GitHub Actions.
-GitHub Actions Run Number: ${{ github.run_number }}
-GitHub Actions Run Attempt: ${{ github.run_attempt }}
-Source Commit SHA: ${{ github.sha }}
-The APK is intended for testing.
-The APK is not a Play Store production release.
-The APK is signed only with a temporary debug keystore.
-EOF
-          )
+          NOTES=$(printf "%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n" \
+            "This is an automatically generated debug APK." \
+            "The APK was built by GitHub Actions." \
+            "GitHub Actions Run Number: ${{ github.run_number }}" \
+            "GitHub Actions Run Attempt: ${{ github.run_attempt }}" \
+            "Source Commit SHA: ${{ github.sha }}" \
+            "The APK is intended for testing." \
+            "The APK is not a Play Store production release." \
+            "The APK is signed only with a temporary debug keystore.")
 
           echo "Publishing release: $TAG_NAME"
           gh release create "$TAG_NAME" "$ASSET_PATH" \
