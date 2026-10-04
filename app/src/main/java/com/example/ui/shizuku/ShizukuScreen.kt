@@ -128,21 +128,21 @@ fun ShizukuScreen(viewModel: MainViewModel) {
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         val (title, color) = when (shizukuStatus) {
-                            ShizukuManager.ShizukuStatus.AUTHORIZED -> "CONNECTED & AUTHORIZED" to NeonGreen
-                            ShizukuManager.ShizukuStatus.PERMISSION_REQUIRED -> "PERMISSION REQUIRED" to WarningAmber
-                            ShizukuManager.ShizukuStatus.SERVICE_STOPPED -> "SERVICE NOT RUNNING" to AlertRed
+                            ShizukuManager.ShizukuStatus.CONNECTED -> "CONNECTED" to NeonGreen
+                            ShizukuManager.ShizukuStatus.RUNNING_NOT_AUTHORIZED -> "RUNNING BUT NOT AUTHORIZED" to WarningAmber
+                            ShizukuManager.ShizukuStatus.NOT_RUNNING -> "NOT RUNNING" to AlertRed
                             ShizukuManager.ShizukuStatus.NOT_INSTALLED -> "NOT INSTALLED" to TextMuted
-                            ShizukuManager.ShizukuStatus.ERROR -> "COMMUNICATION ERROR" to AlertRed
+                            ShizukuManager.ShizukuStatus.UNSUPPORTED -> "UNSUPPORTED" to AlertRed
                         }
                         StatusBadge(status = title, color = color)
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
                             text = when (shizukuStatus) {
-                                ShizukuManager.ShizukuStatus.AUTHORIZED -> "GameBoost is authorized to modify refresh rates and animation scales via system APIs."
-                                ShizukuManager.ShizukuStatus.PERMISSION_REQUIRED -> "Shizuku service is running. Tap 'Request Permission' below to grant access."
-                                ShizukuManager.ShizukuStatus.SERVICE_STOPPED -> "Shizuku app is present, but the background service is stopped. Start it via Wireless Debugging."
+                                ShizukuManager.ShizukuStatus.CONNECTED -> "Shizuku is connected and authorized. Privileged commands can enforce 90Hz hardware display lock."
+                                ShizukuManager.ShizukuStatus.RUNNING_NOT_AUTHORIZED -> "Shizuku service is running. Tap 'Request Permission' below to grant access."
+                                ShizukuManager.ShizukuStatus.NOT_RUNNING -> "Shizuku app is present, but the background service is not running. Start it via Wireless Debugging."
                                 ShizukuManager.ShizukuStatus.NOT_INSTALLED -> "Shizuku is not installed. You can install it from GitHub or Google Play for ADB level controls."
-                                ShizukuManager.ShizukuStatus.ERROR -> "Binder connection failed. Ensure Shizuku is updated to the latest version."
+                                ShizukuManager.ShizukuStatus.UNSUPPORTED -> "Shizuku binder IPC is unsupported on this device environment."
                             },
                             color = TextSecondary,
                             fontSize = 12.sp,

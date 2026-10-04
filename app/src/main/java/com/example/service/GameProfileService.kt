@@ -11,14 +11,18 @@ import android.content.IntentFilter
 import android.os.BatteryManager
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.provider.Settings
-import android.view.Display
-import android.view.WindowManager
 import androidx.core.app.NotificationCompat
 import com.example.GameBoostApplication
 import com.example.MainActivity
 import com.example.R
+import com.example.data.local.GameBoostDatabase
+import com.example.data.model.GameProfile
 import com.example.data.preferences.PreferenceManager
+import com.example.telemetry.CapabilityScanner
+import com.example.telemetry.FpsMode
+import com.example.telemetry.StabilityEngine
 import com.example.telemetry.SystemMonitor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -29,17 +33,14 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
- * Automates the 10-Step Core Gaming Flow:
- * 1. Launch Game
- * 2. Detect device capability
- * 3. Connect/verify Shizuku
- * 4. Detect supported refresh/FPS
- * 5. Select highest supported mode (e.g. 90Hz)
- * 6. Start monitoring
- * 7. Stabilize within Android's permitted limits
- * 8. Show FPS/temperature bubble
- * 9. Thermal protection
- * 10. Restore settings after game closes
+ * Automates the 90 FPS Stability Engine & Game-Specific Profile Lifecycle:
+ * 1. Detect game foreground entry.
+ * 2. Load game profile from Room.
+ * 3. Verify hardware capability & apply legitimate refresh-rate configuration.
+ * 4. Start 90 FPS Stability Engine & telemetry monitoring.
+ * 5. Display floating overlay HUD.
+ * 6. Thermal-aware protection watchdog.
+ * 7. When game exits: safely restore previous display state & booster settings.
  */
 class GameProfileService : Service() {
 
@@ -47,20 +48,31 @@ class GameProfileService : Service() {
     private lateinit var preferenceManager: PreferenceManager
     private lateinit var shizukuManager: ShizukuManager
     private lateinit var systemMonitor: SystemMonitor
+    private lateinit var capabilityScanner: CapabilityScanner
+    private lateinit var stabilityEngine: StabilityEngine
+    private lateinit var database: GameBoostDatabase
 
     private var activeGamePackage: String? = null
     private var activeGameName: String = "Game"
-    private var highestDetectedHz: Float = 90f
+    private var activeProfile: GameProfile? = null
 
     private var lifecycleJob: Job? = null
     private var thermalJob: Job? = null
     private var exitDetectionJob: Job? = null
+
+    // Saved display settings for clean auto-restore
+    private var savedMinRefreshRate: Float = 60f
+    private var savedPeakRefreshRate: Float = 90f
+    private var hasSavedDisplaySettings = false
 
     override fun onCreate() {
         super.onCreate()
         preferenceManager = PreferenceManager(this)
         shizukuManager = ShizukuManager(this)
         systemMonitor = SystemMonitor(this)
+        capabilityScanner = CapabilityScanner(this)
+        stabilityEngine = StabilityEngine(this, shizukuManager, preferenceManager)
+        database = GameBoostDatabase.getDatabase(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -73,30 +85,54 @@ class GameProfileService : Service() {
         activeGameName = intent?.getStringExtra(EXTRA_GAME_NAME) ?: "Game"
 
         startForeground(NOTIFICATION_ID, createNotification("Accelerating $activeGameName..."))
-
-        // Execute Core Gaming Flow
-        executeCoreGamingFlow()
+        executeGameProfileFlow()
 
         return START_STICKY
     }
 
-    private fun executeCoreGamingFlow() {
+    private fun executeGameProfileFlow() {
         lifecycleJob?.cancel()
         lifecycleJob = serviceScope.launch {
-            // STEP 2: Detect device capability & STEP 4: Detect supported refresh/FPS
-            highestDetectedHz = detectHighestRefreshRate()
+            val pkg = activeGamePackage ?: ""
+            // STEP 1: Load game profile from Room DB
+            val profile = database.gameProfileDao().getProfile(pkg) ?: GameProfile(
+                packageName = pkg,
+                gameName = activeGameName,
+                targetRefreshRate = 90f,
+                fpsTarget = 90,
+                stabilityEngine = true,
+                thermalProtection = true,
+                autoRestore = true
+            )
+            activeProfile = profile
 
-            // STEP 3: Connect/verify Shizuku
-            shizukuManager.checkStatus()
+            // STEP 2: Save original display state before altering
+            saveOriginalDisplayState()
 
-            // STEP 5: Select highest supported mode (90Hz lock)
-            enforceHighestRefreshRate(highestDetectedHz)
+            // STEP 3: Detect capability & Apply legitimate refresh rate
+            val caps = capabilityScanner.scanCapabilities(shizukuManager)
+            val requestedHz = profile.targetRefreshRate
+            val targetHz = if (requestedHz >= 85f && caps.is90HzSupported) {
+                90f
+            } else if (requestedHz in 55f..65f) {
+                60f
+            } else {
+                caps.highestSupportedRate
+            }
 
-            // STEP 6: Start monitoring & STEP 7: Stabilize within Android's permitted limits
+            // Apply via Stability Engine
+            val fpsMode = if (targetHz >= 85f) FpsMode.MODE_90HZ else FpsMode.MODE_60HZ
+            if (profile.stabilityEngine) {
+                stabilityEngine.setFpsMode(fpsMode, capabilityScanner)
+            } else {
+                applyDirectRefreshRate(targetHz)
+            }
+
+            // STEP 4: Memory trim
             systemMonitor.trimBackgroundMemory()
 
-            // STEP 8: Show FPS/temperature bubble
-            if (Settings.canDrawOverlays(applicationContext)) {
+            // STEP 5: Launch Floating Overlay if enabled
+            if (profile.launchOverlay && Settings.canDrawOverlays(applicationContext)) {
                 val overlayIntent = Intent(applicationContext, FloatingBoosterService::class.java)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     startForegroundService(overlayIntent)
@@ -105,38 +141,36 @@ class GameProfileService : Service() {
                 }
             }
 
-            // Update Notification with active status
+            // Update Notification
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            nm.notify(NOTIFICATION_ID, createNotification("🎮 $activeGameName active @ ${highestDetectedHz.toInt()}Hz"))
+            nm.notify(NOTIFICATION_ID, createNotification("🎮 $activeGameName: ${targetHz.toInt()}Hz Stability Engine Active"))
 
-            // STEP 9: Thermal protection monitoring
-            startThermalProtectionWatcher()
-
-            // STEP 10: Watchdog for game exit to restore settings
-            startExitDetectionWatcher()
-        }
-    }
-
-    private fun detectHighestRefreshRate(): Float {
-        return try {
-            val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-            val display = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                display
-            } else {
-                @Suppress("DEPRECATION")
-                wm.defaultDisplay
+            // STEP 6: Thermal Watchdog
+            if (profile.thermalProtection) {
+                startThermalProtectionWatcher()
             }
-            val modes = display?.supportedModes ?: emptyArray()
-            val maxModeHz = modes.maxOfOrNull { it.refreshRate } ?: 90f
-            maxModeHz.coerceAtLeast(60f)
-        } catch (e: Exception) {
-            90f
+
+            // STEP 7: Watchdog for game exit to auto-restore
+            if (profile.autoRestore) {
+                startExitDetectionWatcher()
+            }
         }
     }
 
-    private fun enforceHighestRefreshRate(rate: Float) {
+    private fun saveOriginalDisplayState() {
+        if (hasSavedDisplaySettings) return
+        try {
+            savedMinRefreshRate = Settings.System.getFloat(contentResolver, "min_refresh_rate", 60.0f)
+            savedPeakRefreshRate = Settings.System.getFloat(contentResolver, "peak_refresh_rate", 90.0f)
+        } catch (ignored: Exception) {
+            savedMinRefreshRate = 60.0f
+            savedPeakRefreshRate = 90.0f
+        }
+        hasSavedDisplaySettings = true
+    }
+
+    private fun applyDirectRefreshRate(rate: Float) {
         val targetHz = rate.toInt()
-        // 1. Settings API
         if (Settings.System.canWrite(this)) {
             try {
                 Settings.System.putFloat(contentResolver, "peak_refresh_rate", rate)
@@ -145,13 +179,11 @@ class GameProfileService : Service() {
             } catch (ignored: Exception) {
             }
         }
-        // 2. Global settings
         try {
             Settings.Global.putFloat(contentResolver, "peak_refresh_rate", rate)
             Settings.Global.putFloat(contentResolver, "min_refresh_rate", rate)
         } catch (ignored: Exception) {
         }
-        // 3. Shizuku privileged shell interface
         if (shizukuManager.isAuthorized()) {
             serviceScope.launch {
                 shizukuManager.forceGlobalHighRefreshRate(targetHz)
@@ -162,14 +194,24 @@ class GameProfileService : Service() {
     private fun startThermalProtectionWatcher() {
         thermalJob?.cancel()
         thermalJob = serviceScope.launch {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
             while (isActive) {
                 val temp = getBatteryTemperature()
-                if (temp >= 43.0 && preferenceManager.thermalProtectionEnabled) {
-                    // Thermal Protection: throttle brightness slightly to prevent overheating
-                    val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                    nm.notify(NOTIFICATION_ID, createNotification("⚠️ Thermal Guard: Device hot (${temp.toInt()}°C). Cooling active."))
+                val isThrottling = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && powerManager != null) {
+                    powerManager.currentThermalStatus >= PowerManager.THERMAL_STATUS_SEVERE
+                } else {
+                    temp >= 42.0f
                 }
-                delay(5000)
+
+                if (isThrottling) {
+                    nm.notify(
+                        NOTIFICATION_ID,
+                        createNotification("⚠️ Thermal Safeguard: Device warm (${temp.toInt()}°C). Stabilizing in safe mode.")
+                    )
+                }
+                delay(4000)
             }
         }
     }
@@ -178,13 +220,12 @@ class GameProfileService : Service() {
         exitDetectionJob?.cancel()
         exitDetectionJob = serviceScope.launch {
             val targetPkg = activeGamePackage ?: return@launch
-            delay(10000) // Grace period for game launch
+            delay(8000) // Initial game load grace period
 
             while (isActive) {
                 delay(3000)
                 if (isAppInForeground(targetPkg) == false) {
-                    // Game was closed or switched away!
-                    // STEP 10: Restore settings after game closes
+                    // Game exited or switched away! Auto-restore settings
                     restoreSettingsAndStop()
                     break
                 }
@@ -208,7 +249,7 @@ class GameProfileService : Service() {
     private fun getBatteryTemperature(): Float {
         val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
         val status = registerReceiver(null, filter)
-        val tempRaw = status?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 250) ?: 250
+        val tempRaw = status?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 280) ?: 280
         return tempRaw / 10.0f
     }
 
@@ -245,36 +286,20 @@ class GameProfileService : Service() {
 
     private fun restoreSettingsAndStop() {
         serviceScope.launch {
-            // Restore default refresh rate (min 60, peak 90)
-            if (Settings.System.canWrite(applicationContext)) {
+            // Restore previous display state
+            if (hasSavedDisplaySettings && Settings.System.canWrite(applicationContext)) {
                 try {
-                    Settings.System.putFloat(contentResolver, "min_refresh_rate", 60.0f)
-                    Settings.System.putFloat(contentResolver, "peak_refresh_rate", 90.0f)
+                    Settings.System.putFloat(contentResolver, "min_refresh_rate", savedMinRefreshRate)
+                    Settings.System.putFloat(contentResolver, "peak_refresh_rate", savedPeakRefreshRate)
                 } catch (ignored: Exception) {
                 }
             }
+
             if (shizukuManager.isAuthorized()) {
                 shizukuManager.resetGlobalRefreshRate()
             }
 
-            // Restore Brightness if saved
-            val origBrightness = preferenceManager.originalBrightness
-            if (origBrightness >= 0 && Settings.System.canWrite(applicationContext)) {
-                try {
-                    Settings.System.putInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS, origBrightness)
-                } catch (ignored: Exception) {
-                }
-            }
-
-            // Restore DND if permitted
-            val origDnd = preferenceManager.originalDndState
-            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            if (origDnd >= 0 && notificationManager.isNotificationPolicyAccessGranted) {
-                try {
-                    notificationManager.setInterruptionFilter(origDnd)
-                } catch (ignored: Exception) {
-                }
-            }
+            stabilityEngine.restorePreviousState()
 
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
@@ -309,7 +334,6 @@ class GameProfileService : Service() {
                 context.startService(intent)
             }
 
-            // Launch the actual game application
             val launchIntent = context.packageManager.getLaunchIntentForPackage(gamePackage)
             if (launchIntent != null) {
                 launchIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK

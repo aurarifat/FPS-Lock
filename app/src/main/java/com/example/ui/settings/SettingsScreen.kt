@@ -77,7 +77,10 @@ import com.example.ui.theme.TextSecondary
 import com.example.ui.theme.WarningAmber
 
 @Composable
-fun SettingsScreen(viewModel: MainViewModel) {
+fun SettingsScreen(
+    viewModel: MainViewModel,
+    onNavigateToDiagnostics: () -> Unit = {}
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val deviceInfo by viewModel.deviceInfo.collectAsState()
@@ -329,6 +332,30 @@ fun SettingsScreen(viewModel: MainViewModel) {
                     description = "GameBoost never claims unsupported 120Hz display frequencies or fictitious GPU overclocking. The Infinix XPad 20 features a 90Hz panel and MediaTek Helio G88. All metrics displayed are genuine Android OS telemetry.",
                     icon = Icons.Default.Info,
                     color = CyberCyan
+                )
+            }
+        }
+
+        // Diagnostics & Capability Test Card
+        item {
+            GamingCard(
+                title = "Hardware & Capability Diagnostics",
+                icon = Icons.Default.Info,
+                accentColor = CyberCyan
+            ) {
+                Text(
+                    text = "Run diagnostic tests to audit 90 Hz display support, active display modes, Shizuku privileged shell authorization, and thermal sensors.",
+                    color = TextSecondary,
+                    fontSize = 12.sp
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                NeonOutlinedButton(
+                    text = "Open Diagnostics & Capability Test",
+                    icon = Icons.Default.Info,
+                    accentColor = CyberCyan,
+                    onClick = onNavigateToDiagnostics
                 )
             }
         }

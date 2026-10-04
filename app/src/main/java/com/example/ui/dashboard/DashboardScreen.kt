@@ -29,17 +29,28 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.DisplaySettings
 import androidx.compose.material.icons.filled.DoNotDisturbOn
+import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.FlashOn
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.Thermostat
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -81,6 +92,9 @@ import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
 import com.example.ui.theme.WarningAmber
+import com.example.telemetry.FpsMode
+import com.example.telemetry.StabilityStatus
+import com.example.telemetry.RefreshControlMethod
 
 /**
  * Simplified, high-performance Game Booster Dashboard.
@@ -92,7 +106,8 @@ fun DashboardScreen(
     onNavigateToLauncher: () -> Unit,
     onNavigateToOptimizer: () -> Unit,
     onNavigateToShizuku: () -> Unit,
-    onNavigateToOverlay: () -> Unit
+    onNavigateToOverlay: () -> Unit,
+    onNavigateToDiagnostics: () -> Unit = {}
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val deviceInfo by viewModel.deviceInfo.collectAsState()
@@ -104,6 +119,9 @@ fun DashboardScreen(
     val isKillingLag by viewModel.isKillingLag.collectAsState()
     val lagKillResult by viewModel.lagKillResult.collectAsState()
     val gameProfiles by viewModel.gameProfiles.collectAsState()
+    val capabilities by viewModel.capabilities.collectAsState()
+    val stabilityMetrics by viewModel.stabilityMetrics.collectAsState()
+    val selectedFpsMode by viewModel.selectedFpsMode.collectAsState()
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -193,19 +211,19 @@ fun DashboardScreen(
             }
         }
 
-        // 🔥 THE PRIMARY MASTER CONTROL: FORCE 90 FPS GLOBAL LOCK
+        // 🔥 90 FPS STABILITY ENGINE & MODE SELECTOR
         item {
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .border(
                         2.dp,
-                        if (isForce90FpsLocked) NeonGreen else MaterialTheme.colorScheme.outlineVariant,
+                        if (selectedFpsMode != FpsMode.OFF) NeonGreen else MaterialTheme.colorScheme.outlineVariant,
                         RoundedCornerShape(16.dp)
                     ),
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = if (isForce90FpsLocked) DarkSurfaceVariant else MaterialTheme.colorScheme.surface
+                    containerColor = if (selectedFpsMode != FpsMode.OFF) DarkSurfaceVariant else MaterialTheme.colorScheme.surface
                 )
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -219,28 +237,33 @@ fun DashboardScreen(
                                 modifier = Modifier
                                     .size(36.dp)
                                     .clip(CircleShape)
-                                    .background(if (isForce90FpsLocked) NeonGreen.copy(alpha = 0.2f) else DarkSurfaceVariant),
+                                    .background(if (selectedFpsMode != FpsMode.OFF) NeonGreen.copy(alpha = 0.2f) else DarkSurfaceVariant),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Speed,
-                                    contentDescription = "Force 90 FPS",
-                                    tint = if (isForce90FpsLocked) NeonGreen else TextSecondary,
+                                    contentDescription = "90 FPS Stability Engine",
+                                    tint = if (selectedFpsMode != FpsMode.OFF) NeonGreen else TextSecondary,
                                     modifier = Modifier.size(22.dp)
                                 )
                             }
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
                                 Text(
-                                    text = "FORCE 90 FPS LOCK",
-                                    color = if (isForce90FpsLocked) NeonGreen else MaterialTheme.colorScheme.onSurface,
-                                    fontSize = 16.sp,
+                                    text = "90 FPS STABILITY ENGINE",
+                                    color = if (selectedFpsMode != FpsMode.OFF) NeonGreen else MaterialTheme.colorScheme.onSurface,
+                                    fontSize = 15.sp,
                                     fontWeight = FontWeight.Black,
                                     letterSpacing = 0.5.sp
                                 )
                                 Text(
-                                    text = if (isForce90FpsLocked) "PERMANENTLY LOCKED IN ALL APPS" else "DISABLED (SYSTEM CONTROLLED)",
-                                    color = if (isForce90FpsLocked) NeonGreen.copy(alpha = pulseAlpha) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    text = stabilityMetrics.status.label,
+                                    color = when (stabilityMetrics.status) {
+                                        StabilityStatus.STABLE, StabilityStatus.STABLE_60 -> NeonGreen
+                                        StabilityStatus.FPS_DROP, StabilityStatus.THERMAL_WARNING -> WarningAmber
+                                        StabilityStatus.FALLBACK_60HZ, StabilityStatus.SHIZUKU_DISCONNECTED -> AlertRed
+                                        StabilityStatus.OFF -> MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -248,7 +271,7 @@ fun DashboardScreen(
                         }
 
                         Switch(
-                            checked = isForce90FpsLocked,
+                            checked = selectedFpsMode != FpsMode.OFF,
                             onCheckedChange = { viewModel.toggleForce90FpsLock(it) },
                             colors = SwitchDefaults.colors(
                                 checkedThumbColor = ObsidianBg,
@@ -260,19 +283,93 @@ fun DashboardScreen(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    Text(
-                        text = if (isForce90FpsLocked)
-                            "✓ Active: Locks 90Hz hardware refresh rate in Free Fire, PUBG, YouTube, Chrome & all apps. Prevents Android from dropping down to 60Hz."
-                        else
-                            "Turn on to permanently force 90Hz display output across all apps and games without dropping to 60Hz.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 12.sp,
-                        lineHeight = 16.sp
-                    )
+                    // 13. CAPABILITY-BASED UI INDICATOR
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.background)
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "DEVICE 90Hz STATUS",
+                            color = TextMuted,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        val (capLabel, capColor) = when {
+                            capabilities.is90HzSupported && capabilities.controlMethod != RefreshControlMethod.MONITORING_ONLY ->
+                                "[ 90 Hz ] ✓ Supported" to NeonGreen
+                            capabilities.is90HzSupported ->
+                                "[ 90 Hz ] ⚠ Monitoring only" to WarningAmber
+                            else ->
+                                "[ 90 Hz ] ✕ Not supported (Max: ${capabilities.maxSupportedRefreshRate.toInt()}Hz)" to AlertRed
+                        }
+                        Text(
+                            text = capLabel,
+                            color = capColor,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Hardware Display Readout Strip
+                    // 3. 90 FPS MODE SELECTOR (OFF, 60 FPS / 60 Hz, 90 FPS / 90 Hz, AUTO / HIGHEST)
+                    Text(
+                        text = "SELECT STABILITY TARGET",
+                        color = TextMuted,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        for (mode in FpsMode.entries) {
+                            val isSelected = selectedFpsMode == mode
+                            val isSupported = mode != FpsMode.MODE_90HZ || capabilities.is90HzSupported
+
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = {
+                                    if (isSupported || mode == FpsMode.OFF) {
+                                        viewModel.selectFpsMode(mode)
+                                    }
+                                },
+                                enabled = isSupported || mode == FpsMode.OFF,
+                                label = {
+                                    Text(
+                                        text = when (mode) {
+                                            FpsMode.OFF -> "OFF"
+                                            FpsMode.MODE_60HZ -> "60 Hz"
+                                            FpsMode.MODE_90HZ -> if (capabilities.is90HzSupported) "90 Hz" else "90 Hz ✕"
+                                            FpsMode.AUTO_HIGHEST -> "AUTO"
+                                        },
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = NeonGreen.copy(alpha = 0.25f),
+                                    selectedLabelColor = NeonGreen,
+                                    containerColor = MaterialTheme.colorScheme.background,
+                                    labelColor = MaterialTheme.colorScheme.onSurface
+                                ),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("fps_mode_chip_${mode.name}")
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Hardware Telemetry & Frame Timing Strip
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -283,23 +380,75 @@ fun DashboardScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text(text = "CURRENT HARDWARE RATE", color = TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Text(text = "HARDWARE RATE", color = TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             Text(
-                                text = "${telemetry.displayRefreshRate.toInt()} Hz",
-                                color = if (telemetry.displayRefreshRate >= 85f) NeonGreen else WarningAmber,
-                                fontSize = 14.sp,
+                                text = "${stabilityMetrics.currentRefreshRate.toInt()} Hz",
+                                color = if (stabilityMetrics.currentRefreshRate >= 85f) NeonGreen else CyberCyan,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Black
+                            )
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(text = "FRAME TIMING", color = TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = String.format("%.1f ms", stabilityMetrics.frameTimeMs),
+                                color = CyberCyan,
+                                fontSize = 13.sp,
                                 fontWeight = FontWeight.Black
                             )
                         }
                         Column(horizontalAlignment = Alignment.End) {
-                            Text(text = "TARGET FPS CADENCE", color = TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Text(text = "THERMAL STATUS", color = TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             Text(
-                                text = if (isForce90FpsLocked) "90 FPS (LOCKED)" else "60 - 90 FPS",
-                                color = if (isForce90FpsLocked) NeonGreen else CyberCyan,
-                                fontSize = 14.sp,
+                                text = "${stabilityMetrics.temperatureC.toInt()}°C (${stabilityMetrics.thermalTier.name})",
+                                color = when (stabilityMetrics.thermalTier) {
+                                    com.example.telemetry.ThermalTier.NORMAL -> NeonGreen
+                                    com.example.telemetry.ThermalTier.WARM -> WarningAmber
+                                    else -> AlertRed
+                                },
+                                fontSize = 13.sp,
                                 fontWeight = FontWeight.Black
                             )
                         }
+                    }
+
+                    // Diagnostic status message
+                    if (stabilityMetrics.statusMessage.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = stabilityMetrics.statusMessage,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Diagnostic Link Button
+                    Button(
+                        onClick = onNavigateToDiagnostics,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("dashboard_view_diagnostics_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Analytics,
+                            contentDescription = null,
+                            tint = CyberCyan,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "View Hardware & Refresh Rate Diagnostics",
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             }

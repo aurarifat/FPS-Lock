@@ -257,6 +257,11 @@ fun GameLauncherScreen(
         var enableDnd by remember { mutableStateOf(p.enableDnd) }
         var refreshRate by remember { mutableFloatStateOf(if (p.targetRefreshRate > 0) p.targetRefreshRate else 90f) }
         var lockRefreshRate by remember { mutableStateOf(p.targetRefreshRate > 0) }
+        var fpsTarget by remember { mutableIntStateOf(p.fpsTarget) }
+        var performanceMode by remember { mutableStateOf(p.performanceMode) }
+        var stabilityEngine by remember { mutableStateOf(p.stabilityEngine) }
+        var thermalProtection by remember { mutableStateOf(p.thermalProtection) }
+        var autoRestore by remember { mutableStateOf(p.autoRestore) }
         var launchOverlay by remember { mutableStateOf(p.launchOverlay) }
         var animScale by remember { mutableFloatStateOf(if (p.targetAnimationScale >= 0) p.targetAnimationScale else 0.5f) }
 
@@ -271,7 +276,7 @@ fun GameLauncherScreen(
                 )
             },
             text = {
-                Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     // Refresh Rate
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -279,66 +284,94 @@ fun GameLauncherScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text("Target Refresh Rate", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                            Text("Locks display to 90Hz (or 60Hz)", color = TextMuted, fontSize = 11.sp)
+                            Text("Refresh Rate: ${refreshRate.toInt()} Hz", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text("Hardware display frequency", color = TextMuted, fontSize = 11.sp)
                         }
-                        Switch(
-                            checked = lockRefreshRate,
-                            onCheckedChange = { lockRefreshRate = it },
-                            colors = SwitchDefaults.colors(checkedThumbColor = ObsidianBg, checkedTrackColor = NeonGreen)
-                        )
-                    }
-
-                    if (lockRefreshRate) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             NeonOutlinedButton(
                                 text = "60 Hz",
                                 accentColor = if (refreshRate == 60f) NeonGreen else TextMuted,
                                 onClick = { refreshRate = 60f }
                             )
                             NeonOutlinedButton(
-                                text = "90 Hz (XPad)",
+                                text = "90 Hz",
                                 accentColor = if (refreshRate == 90f) NeonGreen else TextMuted,
                                 onClick = { refreshRate = 90f }
                             )
                         }
                     }
 
-                    // Brightness
+                    // FPS Target
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text("Fixed Brightness ($targetBrightness%)", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                            Text("Overrides brightness on game start", color = TextMuted, fontSize = 11.sp)
+                            Text("FPS Target: $fpsTarget FPS", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text("Target frame rate cadence", color = TextMuted, fontSize = 11.sp)
                         }
-                        Switch(
-                            checked = alterBrightness,
-                            onCheckedChange = { alterBrightness = it },
-                            colors = SwitchDefaults.colors(checkedThumbColor = ObsidianBg, checkedTrackColor = NeonGreen)
-                        )
-                    }
-                    if (alterBrightness) {
-                        Slider(
-                            value = targetBrightness.toFloat(),
-                            onValueChange = { targetBrightness = it.toInt() },
-                            valueRange = 10f..100f,
-                            colors = SliderDefaults.colors(thumbColor = NeonGreen, activeTrackColor = NeonGreen)
-                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            NeonOutlinedButton(
+                                text = "60",
+                                accentColor = if (fpsTarget == 60) CyberCyan else TextMuted,
+                                onClick = { fpsTarget = 60 }
+                            )
+                            NeonOutlinedButton(
+                                text = "90",
+                                accentColor = if (fpsTarget == 90) NeonGreen else TextMuted,
+                                onClick = { fpsTarget = 90 }
+                            )
+                        }
                     }
 
-                    // DND
+                    // Stability Engine Toggle
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Auto Do Not Disturb", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Column {
+                            Text("90 FPS Stability Engine", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text("Active fallback & jitter detector", color = TextMuted, fontSize = 11.sp)
+                        }
                         Switch(
-                            checked = enableDnd,
-                            onCheckedChange = { enableDnd = it },
+                            checked = stabilityEngine,
+                            onCheckedChange = { stabilityEngine = it },
+                            colors = SwitchDefaults.colors(checkedThumbColor = ObsidianBg, checkedTrackColor = NeonGreen)
+                        )
+                    }
+
+                    // Thermal Protection Toggle
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("Thermal Protection", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text("Prevents overheating throttling", color = TextMuted, fontSize = 11.sp)
+                        }
+                        Switch(
+                            checked = thermalProtection,
+                            onCheckedChange = { thermalProtection = it },
+                            colors = SwitchDefaults.colors(checkedThumbColor = ObsidianBg, checkedTrackColor = NeonGreen)
+                        )
+                    }
+
+                    // Auto Restore Toggle
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("Auto Restore", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text("Reverts display when game exits", color = TextMuted, fontSize = 11.sp)
+                        }
+                        Switch(
+                            checked = autoRestore,
+                            onCheckedChange = { autoRestore = it },
                             colors = SwitchDefaults.colors(checkedThumbColor = ObsidianBg, checkedTrackColor = NeonGreen)
                         )
                     }
@@ -365,7 +398,12 @@ fun GameLauncherScreen(
                         val updated = p.copy(
                             targetBrightness = if (alterBrightness) targetBrightness else -1,
                             enableDnd = enableDnd,
-                            targetRefreshRate = if (lockRefreshRate) refreshRate else -1f,
+                            targetRefreshRate = refreshRate,
+                            fpsTarget = fpsTarget,
+                            performanceMode = performanceMode,
+                            stabilityEngine = stabilityEngine,
+                            thermalProtection = thermalProtection,
+                            autoRestore = autoRestore,
                             targetAnimationScale = animScale,
                             launchOverlay = launchOverlay
                         )
@@ -543,16 +581,17 @@ fun GameProfileCard(
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 if (profile.targetRefreshRate > 0) {
-                    StatusBadge(status = "${profile.targetRefreshRate.toInt()}Hz", color = CyberCyan)
+                    StatusBadge(status = "${profile.targetRefreshRate.toInt()}Hz", color = NeonGreen)
                 }
-                if (profile.enableDnd) {
-                    StatusBadge(status = "DND Active", color = WarningAmber)
+                StatusBadge(status = "${profile.fpsTarget} FPS", color = CyberCyan)
+                if (profile.stabilityEngine) {
+                    StatusBadge(status = "Stability Engine", color = NeonGreen)
                 }
-                if (profile.targetBrightness in 0..100) {
-                    StatusBadge(status = "${profile.targetBrightness}% Brightness", color = ElectricBlue)
+                if (profile.thermalProtection) {
+                    StatusBadge(status = "Thermal Guard", color = WarningAmber)
                 }
                 if (profile.launchOverlay) {
-                    StatusBadge(status = "Floating HUD", color = NeonGreen)
+                    StatusBadge(status = "HUD", color = CyberCyan)
                 }
             }
 

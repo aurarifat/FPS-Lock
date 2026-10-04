@@ -2,6 +2,7 @@ package com.example.service
 
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -13,12 +14,20 @@ import java.io.InputStreamReader
 
 class ShizukuManager(private val context: Context) : IShizukuService {
 
-    enum class ShizukuStatus {
-        NOT_INSTALLED,
-        SERVICE_STOPPED,
-        PERMISSION_REQUIRED,
-        AUTHORIZED,
-        ERROR
+    enum class ShizukuStatus(val label: String) {
+        CONNECTED("CONNECTED"),
+        RUNNING_NOT_AUTHORIZED("RUNNING BUT NOT AUTHORIZED"),
+        NOT_RUNNING("NOT RUNNING"),
+        NOT_INSTALLED("NOT INSTALLED"),
+        UNSUPPORTED("UNSUPPORTED");
+
+        companion object {
+            // Backward compatibility aliases for existing screens/tests
+            val AUTHORIZED get() = CONNECTED
+            val PERMISSION_REQUIRED get() = RUNNING_NOT_AUTHORIZED
+            val SERVICE_STOPPED get() = NOT_RUNNING
+            val ERROR get() = UNSUPPORTED
+        }
     }
 
     private val _status = MutableStateFlow(ShizukuStatus.NOT_INSTALLED)
@@ -27,28 +36,39 @@ class ShizukuManager(private val context: Context) : IShizukuService {
     private val _lastCommandOutput = MutableStateFlow<String?>(null)
     val lastCommandOutput: StateFlow<String?> = _lastCommandOutput.asStateFlow()
 
+    var onStatusChangedListener: ((ShizukuStatus) -> Unit)? = null
+
     private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
         checkStatus()
     }
 
     private val binderDeadListener = Shizuku.OnBinderDeadListener {
+        _status.value = ShizukuStatus.NOT_RUNNING
+        onStatusChangedListener?.invoke(ShizukuStatus.NOT_RUNNING)
         checkStatus()
     }
 
     private val permissionResultListener = Shizuku.OnRequestPermissionResultListener { _, grantResult ->
-        if (grantResult == PackageManager.PERMISSION_GRANTED) {
-            _status.value = ShizukuStatus.AUTHORIZED
+        val newStatus = if (grantResult == PackageManager.PERMISSION_GRANTED) {
+            ShizukuStatus.CONNECTED
         } else {
-            _status.value = ShizukuStatus.PERMISSION_REQUIRED
+            ShizukuStatus.RUNNING_NOT_AUTHORIZED
         }
+        _status.value = newStatus
+        onStatusChangedListener?.invoke(newStatus)
     }
 
     init {
         try {
-            Shizuku.addBinderReceivedListenerSticky(binderReceivedListener)
-            Shizuku.addBinderDeadListener(binderDeadListener)
-            Shizuku.addRequestPermissionResultListener(permissionResultListener)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                Shizuku.addBinderReceivedListenerSticky(binderReceivedListener)
+                Shizuku.addBinderDeadListener(binderDeadListener)
+                Shizuku.addRequestPermissionResultListener(permissionResultListener)
+            } else {
+                _status.value = ShizukuStatus.UNSUPPORTED
+            }
         } catch (ignored: Throwable) {
+            _status.value = ShizukuStatus.UNSUPPORTED
         }
         checkStatus()
     }
@@ -63,12 +83,21 @@ class ShizukuManager(private val context: Context) : IShizukuService {
             } catch (ignored: Exception) {
             }
         }
-        val intent = android.content.Intent("moe.shizuku.manager.action.START").setPackage("moe.shizuku.privileged.api")
-        val resolved = pm.queryIntentActivities(intent, 0)
-        return resolved.isNotEmpty()
+        return try {
+            val intent = android.content.Intent("moe.shizuku.manager.action.START").setPackage("moe.shizuku.privileged.api")
+            val resolved = pm.queryIntentActivities(intent, 0)
+            resolved.isNotEmpty()
+        } catch (ignored: Exception) {
+            false
+        }
     }
 
     fun checkStatus() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            _status.value = ShizukuStatus.UNSUPPORTED
+            return
+        }
+
         try {
             val ping = Shizuku.pingBinder()
             if (ping) {
@@ -77,7 +106,9 @@ class ShizukuManager(private val context: Context) : IShizukuService {
                 } catch (e: Throwable) {
                     false
                 }
-                _status.value = if (granted) ShizukuStatus.AUTHORIZED else ShizukuStatus.PERMISSION_REQUIRED
+                val newStatus = if (granted) ShizukuStatus.CONNECTED else ShizukuStatus.RUNNING_NOT_AUTHORIZED
+                _status.value = newStatus
+                onStatusChangedListener?.invoke(newStatus)
                 return
             }
         } catch (t: Throwable) {
@@ -85,14 +116,16 @@ class ShizukuManager(private val context: Context) : IShizukuService {
         }
 
         val installed = isShizukuInstalled()
-        _status.value = if (installed) ShizukuStatus.SERVICE_STOPPED else ShizukuStatus.NOT_INSTALLED
+        val newStatus = if (installed) ShizukuStatus.NOT_RUNNING else ShizukuStatus.NOT_INSTALLED
+        _status.value = newStatus
+        onStatusChangedListener?.invoke(newStatus)
     }
 
     fun requestPermission(requestCode: Int = 1001) {
         try {
             if (Shizuku.pingBinder()) {
                 if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
-                    _status.value = ShizukuStatus.AUTHORIZED
+                    _status.value = ShizukuStatus.CONNECTED
                     return
                 }
                 Shizuku.requestPermission(requestCode)
@@ -132,7 +165,7 @@ class ShizukuManager(private val context: Context) : IShizukuService {
     }
 
     override suspend fun executeCommand(command: String): Pair<Boolean, String> = withContext(Dispatchers.IO) {
-        if (_status.value != ShizukuStatus.AUTHORIZED) {
+        if (_status.value != ShizukuStatus.CONNECTED) {
             return@withContext Pair(false, "Shizuku not authorized or not running")
         }
 
@@ -169,7 +202,7 @@ class ShizukuManager(private val context: Context) : IShizukuService {
     }
 
     override fun isAuthorized(): Boolean {
-        return _status.value == ShizukuStatus.AUTHORIZED
+        return _status.value == ShizukuStatus.CONNECTED
     }
 
     override suspend fun forceGlobalHighRefreshRate(rate: Int): Pair<Boolean, String> = withContext(Dispatchers.IO) {
@@ -179,7 +212,6 @@ class ShizukuManager(private val context: Context) : IShizukuService {
             return@withContext Pair(false, msg)
         }
 
-        // Execute user requested commands to force high refresh rate globally
         val cmdGlobalMin = "settings put global min_refresh_rate $rate"
         val cmdGlobalPeak = "settings put global peak_refresh_rate $rate"
         val cmdSystemMin = "settings put system min_refresh_rate $rate"
@@ -190,7 +222,7 @@ class ShizukuManager(private val context: Context) : IShizukuService {
         val (success, output) = executeCommand(combinedCmd)
 
         val logMessage = if (success) {
-            "✓ Executed '$cmdGlobalMin' and '$cmdGlobalPeak' successfully via Shizuku service interface"
+            "✓ Executed '$cmdGlobalMin' and '$cmdGlobalPeak' successfully via Shizuku"
         } else {
             "Failed to execute high refresh rate command: $output"
         }

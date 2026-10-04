@@ -104,6 +104,8 @@ fun FloatingOverlayContent(
     isDarkMode: Boolean = true,
     opacity: Float,
     performanceMode: String = "BEAST_90FPS",
+    stabilityStatus: String = "STABLE",
+    frameTimeMs: Float = 11.1f,
     isMonitoring: Boolean = true,
     lagKillMessage: String? = null,
     screenshotToastMessage: String? = null,
@@ -140,13 +142,16 @@ fun FloatingOverlayContent(
         modifier = Modifier
     ) {
         if (!isExpanded) {
-            // COMPACT FLOATING GAME BOOSTER BUBBLE (FPS + TEMP + RAM)
+            // COMPACT FLOATING GAME BOOSTER BUBBLE (FPS + REFRESH + FRAME + TEMP + RAM + STATUS)
             CompactFpsBubble(
                 fps = fps,
                 fpsColor = fpsColor,
                 temperatureC = telemetry.batteryTemperatureC,
+                refreshRate = telemetry.displayRefreshRate,
+                frameTimeMs = frameTimeMs,
                 ramUsedBytes = telemetry.ramUsedBytes,
                 ramTotalBytes = telemetry.ramTotalBytes,
+                stabilityStatus = stabilityStatus,
                 isDarkMode = isDarkMode,
                 opacity = opacity,
                 pulseAlpha = pulseAlpha,
@@ -164,6 +169,8 @@ fun FloatingOverlayContent(
                 fpsHistory = fpsHistory,
                 stability = stability,
                 telemetry = telemetry,
+                stabilityStatus = stabilityStatus,
+                frameTimeMs = frameTimeMs,
                 isDarkMode = isDarkMode,
                 opacity = opacity,
                 pulseAlpha = pulseAlpha,
@@ -213,8 +220,11 @@ private fun CompactFpsBubble(
     fps: Int,
     fpsColor: Color,
     temperatureC: Float,
+    refreshRate: Float = 60f,
+    frameTimeMs: Float = 16.7f,
     ramUsedBytes: Long,
     ramTotalBytes: Long,
+    stabilityStatus: String = "STABLE",
     isDarkMode: Boolean,
     opacity: Float,
     pulseAlpha: Float,
@@ -229,7 +239,7 @@ private fun CompactFpsBubble(
     val iconTint = if (isDarkMode) TextSecondary else LightTextSecondary
     val badgeBg = if (isDarkMode) DarkSurfaceVariant else LightSurfaceVariant
 
-    val ramPercent = if (ramTotalBytes > 0) ((ramUsedBytes.toFloat() / ramTotalBytes.toFloat()) * 100).toInt() else 50
+    val ramUsedGb = ramUsedBytes / (1024f * 1024f * 1024f)
     val tempColor = when {
         temperatureC >= 42.0 -> AlertRed
         temperatureC >= 38.0 -> WarningAmber
@@ -285,7 +295,7 @@ private fun CompactFpsBubble(
                 Text(
                     text = "$fps",
                     color = fpsColor,
-                    fontSize = 16.sp,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Black,
                     fontFamily = FontFamily.Monospace
                 )
@@ -295,6 +305,36 @@ private fun CompactFpsBubble(
                     fontSize = 9.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(start = 2.dp, bottom = 1.dp)
+                )
+            }
+
+            // Refresh Rate Chip
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(badgeBg)
+                    .padding(horizontal = 5.dp, vertical = 2.dp)
+            ) {
+                Text(
+                    text = "${refreshRate.toInt()}Hz",
+                    color = if (isDarkMode) CyberCyan else LightCyanSecondary,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            // Frame Time Chip
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(badgeBg)
+                    .padding(horizontal = 5.dp, vertical = 2.dp)
+            ) {
+                Text(
+                    text = String.format("%.1fms", frameTimeMs),
+                    color = if (isDarkMode) NeonGreen else LightGreenPrimary,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold
                 )
             }
 
@@ -313,7 +353,7 @@ private fun CompactFpsBubble(
                 )
             }
 
-            // RAM % Chip
+            // RAM GB Chip
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(6.dp))
@@ -321,7 +361,7 @@ private fun CompactFpsBubble(
                     .padding(horizontal = 5.dp, vertical = 2.dp)
             ) {
                 Text(
-                    text = "$ramPercent% RAM",
+                    text = String.format("%.1fGB", ramUsedGb),
                     color = if (isDarkMode) CyberCyan else LightCyanSecondary,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.SemiBold
@@ -349,6 +389,8 @@ private fun ExpandedFpsHud(
     fpsHistory: List<Int>,
     stability: FpsMonitor.StabilityReport,
     telemetry: TelemetryData,
+    stabilityStatus: String = "STABLE",
+    frameTimeMs: Float = 11.1f,
     isDarkMode: Boolean,
     opacity: Float,
     pulseAlpha: Float,
@@ -525,40 +567,55 @@ private fun ExpandedFpsHud(
                 isDarkMode = isDarkMode
             )
 
-            // HARDWARE TELEMETRY STRIP (RAM, THERMAL, BATTERY)
+            // STABILITY STATUS & 6-ITEM METRICS SUMMARY (Section 10)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(8.dp))
                     .background(headerBg)
                     .padding(8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text(text = "RAM", color = mutedText, fontSize = 9.sp)
+                    Text(text = "FRAME TIME", color = mutedText, fontSize = 8.sp, fontWeight = FontWeight.Bold)
                     Text(
-                        text = "${usedMb}MB (${(ramFraction * 100).toInt()}%)",
+                        text = String.format("%.1f ms", frameTimeMs),
+                        color = if (isDarkMode) NeonGreen else LightGreenPrimary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Column {
+                    Text(text = "RAM", color = mutedText, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = String.format("%.1f GB", telemetry.ramUsedBytes / (1024f * 1024f * 1024f)),
                         color = primaryText,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
                 Column {
-                    Text(text = "THERMAL", color = mutedText, fontSize = 9.sp)
+                    Text(text = "TEMP", color = mutedText, fontSize = 8.sp, fontWeight = FontWeight.Bold)
                     Text(
-                        text = String.format("%.1f°C", telemetry.batteryTemperatureC),
+                        text = "${telemetry.batteryTemperatureC.toInt()}°C",
                         color = if (isThermalHot) AlertRed else WarningAmber,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
-                Column {
-                    Text(text = "BATTERY", color = mutedText, fontSize = 9.sp)
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(text = "STABILITY", color = mutedText, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                    val statusColor = when (stabilityStatus) {
+                        "90 FPS STABLE", "60 FPS STABLE", "STABLE" -> if (isDarkMode) NeonGreen else LightGreenPrimary
+                        "FPS DROP DETECTED", "THERMAL SAFEGUARD ACTIVE" -> WarningAmber
+                        else -> AlertRed
+                    }
                     Text(
-                        text = "${telemetry.batteryPercent}%${if (telemetry.isCharging) " ⚡" else ""}",
-                        color = if (isDarkMode) NeonGreen else LightGreenPrimary,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
+                        text = stabilityStatus,
+                        color = statusColor,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Black
                     )
                 }
             }

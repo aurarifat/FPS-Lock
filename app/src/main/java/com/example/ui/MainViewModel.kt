@@ -26,7 +26,13 @@ import com.example.service.FloatingBoosterService
 import com.example.service.GameProfileService
 import com.example.service.RefreshRateGuardianService
 import com.example.service.ShizukuManager
+import com.example.telemetry.CapabilityScanner
+import com.example.telemetry.CapabilityTestReport
+import com.example.telemetry.DeviceCapabilities
+import com.example.telemetry.FpsMode
 import com.example.telemetry.FpsMonitor
+import com.example.telemetry.StabilityEngine
+import com.example.telemetry.StabilityMetrics
 import com.example.telemetry.SystemMonitor
 import com.example.util.HapticHelper
 import kotlinx.coroutines.Dispatchers
@@ -130,6 +136,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // Force 90 FPS Global Lock State
     private val _isForce90FpsLocked = MutableStateFlow(prefs.force90FpsLockEnabled)
     val isForce90FpsLocked: StateFlow<Boolean> = _isForce90FpsLocked.asStateFlow()
+
+    // 90 FPS Stability Engine & Capability Scanner
+    val capabilityScanner = CapabilityScanner(context)
+    val stabilityEngine = StabilityEngine(context, shizukuManager, prefs)
+
+    private val _capabilities = MutableStateFlow(capabilityScanner.scanCapabilities(shizukuManager))
+    val capabilities: StateFlow<DeviceCapabilities> = _capabilities.asStateFlow()
+
+    private val _capabilityReport = MutableStateFlow<CapabilityTestReport?>(null)
+    val capabilityReport: StateFlow<CapabilityTestReport?> = _capabilityReport.asStateFlow()
+
+    private val _isRunningCapabilityTest = MutableStateFlow(false)
+    val isRunningCapabilityTest: StateFlow<Boolean> = _isRunningCapabilityTest.asStateFlow()
+
+    val stabilityMetrics: StateFlow<StabilityMetrics> = stabilityEngine.metrics
+
+    private val _selectedFpsMode = MutableStateFlow(
+        if (prefs.force90FpsLockEnabled) FpsMode.MODE_90HZ else FpsMode.OFF
+    )
+    val selectedFpsMode: StateFlow<FpsMode> = _selectedFpsMode.asStateFlow()
 
     data class AppPermissionsState(
         val hasOverlay: Boolean = false,
@@ -579,25 +605,49 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun toggleForce90FpsLock(enabled: Boolean) {
-        triggerHaptic(HapticHelper.HapticType.SUCCESS)
-        _isForce90FpsLocked.value = enabled
-        prefs.force90FpsLockEnabled = enabled
-        if (enabled) {
-            RefreshRateGuardianService.startService(context)
-            viewModelScope.launch {
-                if (shizukuManager.isAuthorized()) {
-                    shizukuManager.forceGlobalHighRefreshRate(90)
-                }
+    fun selectFpsMode(mode: FpsMode) {
+        triggerHaptic(HapticHelper.HapticType.MEDIUM)
+        _selectedFpsMode.value = mode
+        viewModelScope.launch {
+            val (success, message) = stabilityEngine.setFpsMode(mode, capabilityScanner)
+            if (mode == FpsMode.MODE_90HZ && success) {
+                _isForce90FpsLocked.value = true
+                prefs.force90FpsLockEnabled = true
+                RefreshRateGuardianService.startService(context)
+            } else if (mode == FpsMode.OFF) {
+                _isForce90FpsLocked.value = false
+                prefs.force90FpsLockEnabled = false
+                RefreshRateGuardianService.stopService(context)
             }
-        } else {
-            RefreshRateGuardianService.stopService(context)
-            viewModelScope.launch {
-                if (shizukuManager.isAuthorized()) {
-                    shizukuManager.resetGlobalRefreshRate()
-                }
-            }
+            refreshCapabilities()
         }
+    }
+
+    fun refreshCapabilities() {
+        _capabilities.value = capabilityScanner.scanCapabilities(shizukuManager)
+    }
+
+    fun runCapabilityDiagnosticTest() {
+        triggerHaptic(HapticHelper.HapticType.MEDIUM)
+        viewModelScope.launch {
+            _isRunningCapabilityTest.value = true
+            delay(400)
+            val report = capabilityScanner.runCapabilityTest(shizukuManager)
+            _capabilityReport.value = report
+            _capabilities.value = capabilityScanner.scanCapabilities(shizukuManager)
+            _isRunningCapabilityTest.value = false
+            triggerHaptic(HapticHelper.HapticType.SUCCESS)
+        }
+    }
+
+    fun saveGameProfile(profile: GameProfile) {
+        viewModelScope.launch {
+            gameDao.insertOrUpdateProfile(profile)
+        }
+    }
+
+    fun toggleForce90FpsLock(enabled: Boolean) {
+        selectFpsMode(if (enabled) FpsMode.MODE_90HZ else FpsMode.OFF)
     }
 
     fun forceShizuku90FpsLock() {

@@ -159,6 +159,16 @@ class FloatingBoosterService : Service() {
                 val perfMode by performanceMode.collectAsState()
                 val monitoringActive by isMonitoring.collectAsState()
 
+                val hz = telemetry.displayRefreshRate
+                val frameTime = if (hz > 0) 1000f / hz else 16.7f
+                val statusLabel = when {
+                    telemetry.batteryTemperatureC >= 42.0f -> "THERMAL WARNING"
+                    hz >= 85f && liveFps < 75 -> "FPS DROP"
+                    hz < 70f && PreferenceManager(applicationContext).force90FpsLockEnabled -> "60 Hz FALLBACK"
+                    hz >= 85f -> "STABLE"
+                    else -> "STABLE"
+                }
+
                 MaterialTheme(
                     colorScheme = if (isDarkMode) DarkColorScheme else LightColorScheme,
                     typography = Typography
@@ -172,6 +182,8 @@ class FloatingBoosterService : Service() {
                         isDarkMode = isDarkMode,
                         opacity = opacity,
                         performanceMode = perfMode,
+                        stabilityStatus = statusLabel,
+                        frameTimeMs = frameTime,
                         isMonitoring = monitoringActive,
                         lagKillMessage = message,
                         screenshotToastMessage = screenshotMsg,

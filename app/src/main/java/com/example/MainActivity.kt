@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.MainViewModel
 import com.example.ui.components.StatusBadge
 import com.example.ui.dashboard.DashboardScreen
+import com.example.ui.diagnostics.DiagnosticsScreen
 import com.example.ui.launcher.GameLauncherScreen
 import com.example.ui.navigation.Screen
 import com.example.ui.optimizer.OptimizerScreen
@@ -206,7 +207,8 @@ class MainActivity : ComponentActivity() {
                                 onNavigateToLauncher = { currentScreen = Screen.Launcher },
                                 onNavigateToOptimizer = { currentScreen = Screen.Optimizer },
                                 onNavigateToShizuku = { currentScreen = Screen.Shizuku },
-                                onNavigateToOverlay = { currentScreen = Screen.Overlay }
+                                onNavigateToOverlay = { currentScreen = Screen.Overlay },
+                                onNavigateToDiagnostics = { currentScreen = Screen.Diagnostics }
                             )
                             Screen.Launcher -> GameLauncherScreen(viewModel = viewModel)
                             Screen.Optimizer -> OptimizerScreen(
@@ -215,7 +217,11 @@ class MainActivity : ComponentActivity() {
                             )
                             Screen.Shizuku -> ShizukuScreen(viewModel = viewModel)
                             Screen.Overlay -> OverlayConfigScreen(viewModel = viewModel)
-                            Screen.SettingsScreen -> SettingsScreen(viewModel = viewModel)
+                            Screen.Diagnostics -> DiagnosticsScreen(viewModel = viewModel)
+                            Screen.SettingsScreen -> SettingsScreen(
+                                viewModel = viewModel,
+                                onNavigateToDiagnostics = { currentScreen = Screen.Diagnostics }
+                            )
                         }
                     }
                 }
